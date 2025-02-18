@@ -11,6 +11,11 @@ if(PAPI_FOUND)
   target_compile_definitions(benchmark_base INTERFACE WITH_PAPI)
 endif()
 
+add_library(monotonic_copy_base INTERFACE)
+target_sources(monotonic_copy_base INTERFACE monotonic_copy.cpp "util/threading.cpp")
+target_link_libraries(monotonic_copy_base INTERFACE benchmark_base
+                                                 Threads::Threads)
+
 add_library(monotonic_base INTERFACE)
 target_sources(monotonic_base INTERFACE monotonic.cpp "util/threading.cpp")
 target_link_libraries(monotonic_base INTERFACE benchmark_base
@@ -40,7 +45,7 @@ if(EXP_TUNING_TARGETS)
   add_custom_target(tuning_log_all)
 endif()
 
-foreach(benchmark monotonic push_pop dijkstra knapsack knapsack_float)
+foreach(benchmark monotonic_copy monotonic push_pop dijkstra knapsack knapsack_float)
   add_custom_target(${benchmark}_all)
   add_custom_target(${benchmark}_log_all)
   if(EXP_TUNING_TARGETS)
@@ -61,7 +66,7 @@ function(add_benchmark benchmark target)
 endfunction()
 
 foreach(target ${COMPETITORS})
-  foreach(benchmark monotonic push_pop dijkstra knapsack)
+  foreach(benchmark monotonic_copy monotonic push_pop dijkstra knapsack)
     add_benchmark(${benchmark} ${target})
     add_dependencies(${benchmark}_all ${benchmark}_${target})
     add_dependencies(${benchmark}_log_all ${benchmark}_log_${target})
@@ -76,7 +81,7 @@ endforeach()
 
 if(EXP_TUNING_TARGETS)
   foreach(target ${TUNING_TARGETS})
-    foreach(benchmark monotonic push_pop dijkstra knapsack knapsack_float)
+    foreach(benchmark monotonic_copy monotonic push_pop dijkstra knapsack knapsack_float)
       add_benchmark(${benchmark} ${target})
       add_dependencies(${benchmark}_tuning_all ${benchmark}_${target})
       add_dependencies(${benchmark}_log_tuning_all ${benchmark}_log_${target})
