@@ -36,6 +36,8 @@ using value_type = unsigned long;
 using pq_type = PQ<true, key_type, value_type>;
 using handle_type = pq_type::handle_type;
 
+using namespace std::chrono;
+
 struct Settings {
     int num_threads = 4;
     long long prefill_per_thread = 1 << 20;
@@ -49,6 +51,9 @@ struct Settings {
     int affinity = 6;
     int timeout_s = 0;
     int sleep_us = 0;
+    std::vector<std::pair<int,seconds>> contention_list = {
+        {1, seconds(2)}, {3, seconds(2)}, 
+        {2, seconds(2)}, {4, seconds(2)}};
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
 #endif
@@ -336,6 +341,8 @@ void write_log(std::vector<ThreadData> const& thread_data, std::ostream& out) {
 struct SharedData {
     std::vector<long long> updates;
     std::atomic_llong counter{0};
+    std::atomic_int active_threads;
+    std::atomic_bool stop;
     std::chrono::high_resolution_clock::time_point start_time;
     std::chrono::high_resolution_clock::time_point end_time;
     std::vector<ThreadData> thread_data;
@@ -423,12 +430,34 @@ class Context : public thread_coordination::Context {
 [[gnu::noinline]] void work_loop(Context& context) {
     auto offset = static_cast<value_type>(context.settings().num_threads * context.settings().prefill_per_thread);
     long long max = context.settings().iterations_per_thread * context.settings().num_threads;
+    context.shared_data().stop = false;
+
+    // -- Coordinator Thread --
+    // Assign thread with highest id as coordinator.
+    if (context.id() == (context.settings().num_threads - 1)) {
+        std::clog << "Coordinator thread: " << context.id() << "\n";
+        for (auto const& e: context.settings().contention_list) {
+            context.shared_data().active_threads = e.first;
+            std::this_thread::sleep_for(e.second);
+        }
+        context.shared_data().stop = true;
+        return;
+    }
+    // -- Worker Threads --
+    // Fetch batch of work.
     for (auto from = context.shared_data().counter.fetch_add(context.settings().batch_size, std::memory_order_relaxed);
-         from < max;
-         from = context.shared_data().counter.fetch_add(context.settings().batch_size, std::memory_order_relaxed)) {
+        from < max;
+        from = context.shared_data().counter.fetch_add(context.settings().batch_size, std::memory_order_relaxed)) {
+        
         auto to = std::min(from + context.settings().batch_size, max);
         for (auto i = from; i < to; ++i) {
-            while (true) {
+            // Work until coordinator declares a stop or the timeout is reached.
+            while (!context.shared_data().stop) {
+                // Sleep if more threads are operating than should be active.
+                if (context.id() >= context.shared_data().active_threads) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    continue;
+                }
                 if (auto e = context.try_pop(); e) {
                     if (context.settings().sleep_us != 0) {
                         auto sleep_until = std::chrono::high_resolution_clock::now() +
@@ -439,7 +468,7 @@ class Context : public thread_coordination::Context {
                     }
                     context.push({static_cast<key_type>(static_cast<long long>(e->first) +
                                                         context.shared_data().updates[static_cast<std::size_t>(i)]),
-                                  offset + static_cast<value_type>(i)});
+                                offset + static_cast<value_type>(i)});
                     break;
                 }
                 ++context.thread_data().failed_pop_count;
