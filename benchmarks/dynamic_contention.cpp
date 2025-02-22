@@ -39,7 +39,7 @@ using handle_type = pq_type::handle_type;
 using namespace std::chrono;
 
 struct Settings {
-    int num_threads = 4;
+    int num_threads = 8;
     long long prefill_per_thread = 1 << 20;
     long long iterations_per_thread = 1 << 24;
     key_type min_prefill = 1;
@@ -49,11 +49,12 @@ struct Settings {
     long long batch_size = 1 << 12;
     int seed = 1;
     int affinity = 6;
-    int timeout_s = 0;
+    int timeout_s = 5;
     int sleep_us = 0;
     std::vector<std::pair<int,seconds>> contention_list = {
         {1, seconds(2)}, {3, seconds(2)}, 
         {2, seconds(2)}, {4, seconds(2)}};
+    milliseconds sleep_granularity = milliseconds(10);
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
 #endif
@@ -341,8 +342,8 @@ void write_log(std::vector<ThreadData> const& thread_data, std::ostream& out) {
 struct SharedData {
     std::vector<long long> updates;
     std::atomic_llong counter{0};
-    std::atomic_int active_threads;
-    std::atomic_bool stop;
+    std::atomic_int active_threads = 0;
+    std::atomic_bool stop = false;
     std::chrono::high_resolution_clock::time_point start_time;
     std::chrono::high_resolution_clock::time_point end_time;
     std::vector<ThreadData> thread_data;
@@ -427,17 +428,39 @@ class Context : public thread_coordination::Context {
     }
 };
 
+bool hit_timeout(Context& context) {
+    return (context.settings().timeout_s != 0 && std::chrono::high_resolution_clock::now() >
+            context.shared_data().start_time + std::chrono::seconds{context.settings().timeout_s});
+}
+
+bool hit_timeout(Context& context, std::chrono::milliseconds sleep_duration) {
+    return (context.settings().timeout_s != 0 && std::chrono::high_resolution_clock::now() + sleep_duration >
+            context.shared_data().start_time + std::chrono::seconds{context.settings().timeout_s});
+}
+
+bool hit_timeout(Context& context, std::chrono::seconds sleep_duration) {
+    return (context.settings().timeout_s != 0 && std::chrono::high_resolution_clock::now() + sleep_duration >
+            context.shared_data().start_time + std::chrono::seconds{context.settings().timeout_s});
+}
+
+void sleep_to_timeout(Context& context) {
+    std::this_thread::sleep_for(context.shared_data().start_time + 
+                                std::chrono::seconds{context.settings().timeout_s} - 
+                                std::chrono::high_resolution_clock::now());
+}
+
 [[gnu::noinline]] void work_loop(Context& context) {
     auto offset = static_cast<value_type>(context.settings().num_threads * context.settings().prefill_per_thread);
     long long max = context.settings().iterations_per_thread * context.settings().num_threads;
-    context.shared_data().stop = false;
-
     // -- Coordinator Thread --
     // Assign thread with highest id as coordinator.
     if (context.id() == (context.settings().num_threads - 1)) {
-        std::clog << "Coordinator thread: " << context.id() << "\n";
         for (auto const& e: context.settings().contention_list) {
             context.shared_data().active_threads = e.first;
+            if (hit_timeout(context, e.second)) {
+                sleep_to_timeout(context);
+                break;
+            }
             std::this_thread::sleep_for(e.second);
         }
         context.shared_data().stop = true;
@@ -455,29 +478,31 @@ class Context : public thread_coordination::Context {
             while (!context.shared_data().stop) {
                 // Sleep if more threads are operating than should be active.
                 if (context.id() >= context.shared_data().active_threads) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    if (hit_timeout(context, context.settings().sleep_granularity)) {
+                        sleep_to_timeout(context);
+                        break;
+                    }
+                    std::this_thread::sleep_for(context.settings().sleep_granularity);
                     continue;
                 }
                 if (auto e = context.try_pop(); e) {
                     if (context.settings().sleep_us != 0) {
                         auto sleep_until = std::chrono::high_resolution_clock::now() +
-                            std::chrono::microseconds{context.settings().sleep_us};
+                                            std::chrono::microseconds{context.settings().sleep_us};
                         while (std::chrono::high_resolution_clock::now() < sleep_until) {
                             PAUSE;
                         }
                     }
                     context.push({static_cast<key_type>(static_cast<long long>(e->first) +
                                                         context.shared_data().updates[static_cast<std::size_t>(i)]),
-                                offset + static_cast<value_type>(i)});
+                                                        offset + static_cast<value_type>(i)});
                     break;
                 }
                 ++context.thread_data().failed_pop_count;
             }
         }
         context.thread_data().iter_count += to - from;
-        if (context.settings().timeout_s != 0 &&
-            std::chrono::high_resolution_clock::now() >
-                context.shared_data().start_time + std::chrono::seconds{context.settings().timeout_s}) {
+        if (hit_timeout(context)) {
             break;
         }
     }
