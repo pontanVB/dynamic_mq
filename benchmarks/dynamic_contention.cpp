@@ -51,7 +51,7 @@ struct Settings {
     int affinity = 6;
     int timeout_s = 5;
     int sleep_us = 0;
-    std::vector<std::pair<int,seconds>> contention_list = {
+    std::vector<std::pair<int,seconds>> thread_intervals = {
         {1, seconds(2)}, {3, seconds(2)}, 
         {2, seconds(2)}, {4, seconds(2)}};
     milliseconds sleep_granularity = milliseconds(10);
@@ -147,6 +147,20 @@ bool validate_settings(Settings const& settings) {
         std::cerr << "Error: Seed must be greater than 0\n";
         return false;
     }
+    for (auto const& e: settings.thread_intervals) {
+        if (e.first < 0) {
+            std::cerr << "Error: Active threads must at least 0\n";
+            return false;
+        }
+        if (e.second <= seconds(0)) {
+            std::cerr << "Error: Contention interval must be greater than 0\n";
+            return false;
+        }
+    }
+    if (settings.sleep_granularity <= milliseconds(0)) {
+        std::cerr << "Error: Sleep granularity must be greater than 0\n";
+        return false;
+    }
 #ifdef LOG_OPERATIONS
     if (settings.log_file.empty()) {
         std::cerr << "Error: Log file name must not be empty\n";
@@ -207,6 +221,7 @@ void write_settings_human_readable(Settings const& settings, std::ostream& out) 
     out << "Prefill range: [" << settings.min_prefill << ", " << settings.max_prefill << "]\n";
     out << "Update range: [" << settings.min_update << ", " << settings.max_update << "]\n";
     out << "Batch size: " << settings.batch_size << '\n';
+    out << "Seed: " << settings.seed << '\n';
     out << "Affinity: " << affinity_name(settings.affinity) << '\n';
     out << "Timeout: ";
     if (settings.timeout_s == 0) {
@@ -220,7 +235,16 @@ void write_settings_human_readable(Settings const& settings, std::ostream& out) 
     } else {
         out << settings.sleep_us << " us\n";
     }
-    out << "Seed: " << settings.seed << '\n';
+    out << "Thread intervals (nr, time): ";
+    for (size_t i = 0; i < settings.thread_intervals.size(); ++i) {
+        out << "(" << settings.thread_intervals[i].first << ", " 
+            << settings.thread_intervals[i].second.count() << " s)";
+        if (i != settings.thread_intervals.size() - 1) {
+            out << ", ";
+        }
+    }
+    out << "\n";
+    out << "Sleep granularity: " << settings.sleep_granularity.count() << " ms\n";
 #ifdef LOG_OPERATIONS
     out << "Log file: " << settings.log_file << '\n';
 #endif
@@ -247,10 +271,23 @@ void write_settings_json(Settings const& settings, std::ostream& out) {
     out << std::quoted("update_min") << ':' << settings.min_update << ',';
     out << std::quoted("update_max") << ':' << settings.max_update << ',';
     out << std::quoted("batch_size") << ':' << settings.batch_size << ',';
+    out << std::quoted("seed") << ':' << settings.seed << ',';
     out << std::quoted("affinity") << ':' << settings.affinity << ',';
     out << std::quoted("timeout_s") << ':' << settings.timeout_s << ',';
     out << std::quoted("sleep_us") << ':' << settings.sleep_us << ',';
-    out << std::quoted("seed") << ':' << settings.seed << ',';
+    out << std::quoted("thread_intervals") << ':';
+    out << '[';
+    for (std::size_t i = 0; i < settings.thread_intervals.size(); ++i) {
+        out << '{';
+        out << std::quoted("active_threads") << ':' << settings.thread_intervals[i].first << ',';
+        out << std::quoted("duration") << ':' << settings.thread_intervals[i].second.count();
+        out << '}';
+        if (i != settings.thread_intervals.size() - 1) {
+            out << ',';
+        }
+    }
+    out << ']' << ',';
+    out << std::quoted("sleep_granularity") << ':' << settings.sleep_granularity.count() << ',';
 #ifdef WITH_PAPI
     out << std::quoted("papi_events") << ':';
     out << '[';
@@ -455,7 +492,7 @@ void sleep_to_timeout(Context& context) {
     // -- Coordinator Thread --
     // Assign thread with highest id as coordinator.
     if (context.id() == (context.settings().num_threads - 1)) {
-        for (auto const& e: context.settings().contention_list) {
+        for (auto const& e: context.settings().thread_intervals) {
             context.shared_data().active_threads = e.first;
             if (hit_timeout(context, e.second)) {
                 sleep_to_timeout(context);
