@@ -467,6 +467,17 @@ void sleep_to_timeout(Context& context) {
         return;
     }
     // -- Worker Threads --
+    // Sleep if more threads are operating than should be active (avoid fetching if sleeping from the beginning).
+    while (context.id() >= context.shared_data().active_threads) {
+        if (context.shared_data().stop) {
+            return;
+        }
+        if (hit_timeout(context, context.settings().sleep_granularity)) {
+            sleep_to_timeout(context);
+            return;
+        }
+        std::this_thread::sleep_for(context.settings().sleep_granularity);
+    }
     // Fetch batch of work.
     for (auto from = context.shared_data().counter.fetch_add(context.settings().batch_size, std::memory_order_relaxed);
         from < max;
