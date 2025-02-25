@@ -15,6 +15,8 @@
 #include "multiqueue/modes/random.hpp"
 #elif defined MQ_MODE_STICK_RANDOM
 #include "multiqueue/modes/stick_random.hpp"
+#elif defined MQ_MODE_STICK_RANDOM_DYNAMIC
+#include "benchmarks/util/stick_random_dynamic.hpp"
 #elif defined MQ_MODE_STICK_SWAP
 #include "multiqueue/modes/stick_swap.hpp"
 #elif defined MQ_MODE_STICK_MARK
@@ -68,6 +70,10 @@ static constexpr bool has_stickiness = false;
 #elif defined MQ_MODE_STICK_RANDOM
 using mode_type = ::multiqueue::mode::StickRandom<num_pop_candidates>;
 static constexpr auto mode_name = "stick_random";
+static constexpr bool has_stickiness = true;
+#elif defined MQ_MODE_STICK_RANDOM_DYNAMIC
+using mode_type = ::multiqueue::mode::StickRandomDynamic<num_pop_candidates>;
+static constexpr auto mode_name = "stick_random_dynamic";
 static constexpr bool has_stickiness = true;
 #elif defined MQ_MODE_STICK_SWAP
 using mode_type = ::multiqueue::mode::StickSwap<num_pop_candidates>;
