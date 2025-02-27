@@ -30,6 +30,13 @@
 #define PAUSE void(0)
 #endif
 
+//TEST INCLUDES
+
+#include "util/stick_random_dynamic.hpp"
+
+
+
+
 using key_type = unsigned long;
 using value_type = unsigned long;
 
@@ -39,7 +46,7 @@ using handle_type = pq_type::handle_type;
 using namespace std::chrono;
 
 struct Settings {
-    int num_threads = 8;
+    int num_threads = 4;
     long long prefill_per_thread = 1 << 20;
     long long iterations_per_thread = 1 << 24;
     key_type min_prefill = 1;
@@ -49,11 +56,11 @@ struct Settings {
     long long batch_size = 1 << 12;
     int seed = 1;
     int affinity = 6;
-    int timeout_s = 5;
+    int timeout_s = 8;
     int sleep_us = 0;
-    std::vector<std::pair<int,seconds>> thread_intervals = {
-        {1, seconds(2)}, {3, seconds(2)}, 
-        {2, seconds(2)}, {4, seconds(2)}};
+    std::deque<std::pair<int,seconds>> thread_intervals = {
+        {1, seconds(2)}, {2, seconds(2)}, 
+        {3, seconds(2)}, {4, seconds(2)}};
     milliseconds sleep_granularity = milliseconds(10);
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
@@ -384,6 +391,9 @@ struct SharedData {
     std::chrono::high_resolution_clock::time_point start_time;
     std::chrono::high_resolution_clock::time_point end_time;
     std::vector<ThreadData> thread_data;
+
+    //test
+    std::atomic_long lock_fails_count = 0;
 };
 
 void write_result_json(Settings const& settings, SharedData const& data, std::ostream& out) {
@@ -394,6 +404,7 @@ void write_result_json(Settings const& settings, SharedData const& data, std::os
     out << std::quoted("results") << ':';
     out << '{';
     out << std::quoted("time_ns") << ':' << std::chrono::nanoseconds{data.end_time - data.start_time}.count() << ',';
+    out << std::quoted("failed_locks") << ':' << results::max_contention << ',';
     out << std::quoted("thread_data") << ':';
     out << '[';
     for (auto it = data.thread_data.begin(); it != data.thread_data.end(); ++it) {
@@ -489,32 +500,52 @@ void sleep_to_timeout(Context& context) {
 [[gnu::noinline]] void work_loop(Context& context) {
     auto offset = static_cast<value_type>(context.settings().num_threads * context.settings().prefill_per_thread);
     long long max = context.settings().iterations_per_thread * context.settings().num_threads;
-    // -- Coordinator Thread --
-    // Assign thread with highest id as coordinator.
-    if (context.id() == (context.settings().num_threads - 1)) {
-        for (auto const& e: context.settings().thread_intervals) {
-            context.shared_data().active_threads = e.first;
-            if (hit_timeout(context, e.second)) {
-                sleep_to_timeout(context);
-                break;
-            }
-            std::this_thread::sleep_for(e.second);
-        }
-        context.shared_data().stop = true;
-        return;
-    }
-    // -- Worker Threads --
-    // Sleep if more threads are operating than should be active (avoid fetching if sleeping from the beginning).
-    while (context.id() >= context.shared_data().active_threads) {
-        if (context.shared_data().stop) {
-            return;
-        }
+
+
+    // OLD -----------------------------------------
+    // Wait here until time to work
+    // for (auto const& e: context.settings().thread_intervals) {
+    //     context.shared_data().active_threads = e.first;
+    //     if (hit_timeout(context, e.second)) {
+    //         sleep_to_timeout(context);
+    //         break;
+    //     }
+    //     std::this_thread::sleep_for(e.second);
+    // }
+
+    // // -- Worker Threads --
+    // // Sleep if more threads are operating than should be active (avoid fetching if sleeping from the beginning).
+    // while (context.id() >= context.shared_data().active_threads) {
+    //     if (context.shared_data().stop) {
+    //         return;
+    //     }
+    //     if (hit_timeout(context, context.settings().sleep_granularity)) {
+    //         sleep_to_timeout(context);
+    //         return;
+    //     }
+    //     std::this_thread::sleep_for(context.settings().sleep_granularity);
+    // }
+    // OLD end -----------------------------------------
+
+    // Wait here until time to work
+    // Sleeping if im not suppsed to work, then update the list and look if "im" supposed to work at the next interval
+
+    auto thread_itervals = context.settings().thread_intervals;
+    
+    while(context.id() >= thread_itervals.front().first){
         if (hit_timeout(context, context.settings().sleep_granularity)) {
             sleep_to_timeout(context);
             return;
         }
-        std::this_thread::sleep_for(context.settings().sleep_granularity);
+        std::this_thread::sleep_for(thread_itervals.front().second);
+
+        
+        thread_itervals.pop_front();
+           
     }
+
+    
+
     // Fetch batch of work.
     for (auto from = context.shared_data().counter.fetch_add(context.settings().batch_size, std::memory_order_relaxed);
         from < max;
@@ -522,15 +553,17 @@ void sleep_to_timeout(Context& context) {
         
         auto to = std::min(from + context.settings().batch_size, max);
         for (auto i = from; i < to; ++i) {
-            // Work until coordinator declares a stop or the timeout is reached.
-            while (!context.shared_data().stop) {
-                // Sleep if more threads are operating than should be active.
-                if (context.id() >= context.shared_data().active_threads) {
+            // OLD - Work until coordinator declares a stop or the timeout is reached.
+            while (!thread_itervals.empty()) {
+                // OLD - Sleep if more threads are operating than should be active.
+                // Sleep im not supposed to work.
+                if (context.id() >= thread_itervals.front().first) {
                     if (hit_timeout(context, context.settings().sleep_granularity)) {
                         sleep_to_timeout(context);
                         break;
                     }
-                    std::this_thread::sleep_for(context.settings().sleep_granularity);
+                    std::this_thread::sleep_for(thread_itervals.front().second);
+                    thread_itervals.pop_front();
                     continue;
                 }
                 if (auto e = context.try_pop(); e) {
@@ -664,6 +697,8 @@ void run_benchmark(Settings const& settings) {
         auto dispatcher = thread_coordination::Dispatcher(affinity, settings.num_threads, [&](auto ctx) {
             benchmark_thread(Context(std::move(ctx), pq.get_handle(), shared_data, settings));
         });
+
+        // Wait until timeout and then stop?
         dispatcher.wait();
     };
     switch (settings.affinity) {
