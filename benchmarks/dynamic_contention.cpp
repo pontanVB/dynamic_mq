@@ -530,18 +530,18 @@ void sleep_to_timeout(Context& context) {
     // Wait here until time to work
     // Sleeping if im not suppsed to work, then update the list and look if "im" supposed to work at the next interval
 
-    auto thread_itervals = context.settings().thread_intervals;
+    auto thread_intervals = context.settings().thread_intervals;
+    auto pop_time;
     
-    while(context.id() >= thread_itervals.front().first){
+    while(context.id() >= thread_intervals.front().first){
         if (hit_timeout(context, context.settings().sleep_granularity)) {
             sleep_to_timeout(context);
             return;
         }
-        std::this_thread::sleep_for(thread_itervals.front().second);
+        std::this_thread::sleep_for(thread_intervals.front().second);
 
-        
-        thread_itervals.pop_front();
-           
+        thread_intervals.pop_front();
+        pop_time = std::chrono::high_resolution_clock::now();
     }
 
     
@@ -554,16 +554,21 @@ void sleep_to_timeout(Context& context) {
         auto to = std::min(from + context.settings().batch_size, max);
         for (auto i = from; i < to; ++i) {
             // OLD - Work until coordinator declares a stop or the timeout is reached.
-            while (!thread_itervals.empty()) {
+            while (!thread_intervals.empty()) {
                 // OLD - Sleep if more threads are operating than should be active.
                 // Sleep im not supposed to work.
-                if (context.id() >= thread_itervals.front().first) {
+                if (context.id() >= thread_intervals.front().first) {
                     if (hit_timeout(context, context.settings().sleep_granularity)) {
                         sleep_to_timeout(context);
                         break;
                     }
-                    std::this_thread::sleep_for(thread_itervals.front().second);
-                    thread_itervals.pop_front();
+                    std::this_thread::sleep_for(thread_intervals.front().second);
+                    thread_intervals.pop_front();
+                    pop_time = std::chrono::high_resolution_clock::now();
+                    continue;
+                } else if (pop_time - std::chrono::high_resolution_clock::now() >= thread_intervals.front().second) {
+                    thread_intervals.pop_front();
+                    pop_time = std::chrono::high_resolution_clock::now();
                     continue;
                 }
                 if (auto e = context.try_pop(); e) {
