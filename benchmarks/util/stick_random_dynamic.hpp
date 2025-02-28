@@ -9,7 +9,7 @@
 #include <optional>
 #include <random>
 
-namespace results::max_contention{
+namespace results{
     inline int max_contention;
 }
 
@@ -23,6 +23,7 @@ class StickRandomDynamic {
     struct Config {
         int seed{1};
         int stickiness{16};
+        int contention_threshhold{5}; //usecase?????
     };
 
     struct SharedData {
@@ -36,6 +37,7 @@ class StickRandomDynamic {
     pcg32 rng_{};
     std::array<std::size_t, static_cast<std::size_t>(num_pop_candidates)> pop_index_{};
     int count_{};
+    int lock_fail_count = 0;
 
     void refresh_pop_index(std::size_t num_pqs) noexcept {
         for (auto it = pop_index_.begin(); it != pop_index_.end(); ++it) {
@@ -82,6 +84,13 @@ class StickRandomDynamic {
                 --count_;
                 return v;
             }
+            else { //lock fail
+                ++lock_fail_count;
+                if(lock_fail_count > results::max_contention){
+                    results::max_contention = lock_fail_count;
+                }
+                
+            }
             refresh_pop_index(ctx.num_pqs());
             count_ = ctx.config().stickiness;
         }
@@ -102,6 +111,13 @@ class StickRandomDynamic {
                 guard.unlock();
                 --count_;
                 return;
+            }
+            else { //lock fail
+                ++lock_fail_count;
+                if(lock_fail_count > results::max_contention){
+                    results::max_contention = lock_fail_count;
+                }
+
             }
             refresh_pop_index(ctx.num_pqs());
             count_ = ctx.config().stickiness;
