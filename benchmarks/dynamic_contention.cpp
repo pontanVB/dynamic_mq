@@ -59,8 +59,8 @@ struct Settings {
     int timeout_s = 8;
     int sleep_us = 0;
     std::deque<std::pair<int,seconds>> thread_intervals = {
-        {1, seconds(2)}, {2, seconds(2)}, 
-        {3, seconds(2)}, {4, seconds(2)}};
+        {4, seconds(2)}, {3, seconds(2)}, 
+        {2, seconds(2)}, {1, seconds(2)}};
     milliseconds sleep_granularity = milliseconds(10);
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
@@ -531,7 +531,7 @@ void sleep_to_timeout(Context& context) {
     // Sleeping if im not suppsed to work, then update the list and look if "im" supposed to work at the next interval
 
     auto thread_intervals = context.settings().thread_intervals;
-    auto pop_time;
+    std::chrono::high_resolution_clock::time_point pop_time = std::chrono::high_resolution_clock::now();
     
     while(context.id() >= thread_intervals.front().first){
         if (hit_timeout(context, context.settings().sleep_granularity)) {
@@ -566,7 +566,7 @@ void sleep_to_timeout(Context& context) {
                     thread_intervals.pop_front();
                     pop_time = std::chrono::high_resolution_clock::now();
                     continue;
-                } else if (pop_time - std::chrono::high_resolution_clock::now() >= thread_intervals.front().second) {
+                } else if (std::chrono::high_resolution_clock::now() - pop_time >= thread_intervals.front().second) {
                     thread_intervals.pop_front();
                     pop_time = std::chrono::high_resolution_clock::now();
                     continue;
