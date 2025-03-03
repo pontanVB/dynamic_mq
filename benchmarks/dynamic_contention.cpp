@@ -22,6 +22,9 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <fstream>
+#include <sstream>
+#include <filesystem>
 
 #ifdef __SSE2__
 #include <emmintrin.h>
@@ -31,9 +34,8 @@
 #endif
 
 //TEST INCLUDES
-
 #include "util/stick_random_dynamic.hpp"
-
+#include "util/json.hpp"
 
 
 
@@ -44,6 +46,7 @@ using pq_type = PQ<true, key_type, value_type>;
 using handle_type = pq_type::handle_type;
 
 using namespace std::chrono;
+using json = nlohmann::json;
 
 struct Settings {
     int num_threads = 4;
@@ -58,9 +61,7 @@ struct Settings {
     int affinity = 6;
     int timeout_s = 8;
     int sleep_us = 0;
-    std::deque<std::pair<int,seconds>> thread_intervals = {
-        {4, seconds(2)}, {3, seconds(2)}, 
-        {2, seconds(2)}, {1, seconds(2)}};
+    std::deque<std::pair<int,seconds>> thread_intervals;
     milliseconds sleep_granularity = milliseconds(10);
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
@@ -69,6 +70,26 @@ struct Settings {
     std::vector<std::string> papi_events;
 #endif
     pq_type::settings_type pq_settings;
+
+    // Constructor that loads the thread_interval data.
+    Settings() {
+        std::ifstream file("benchmarks/util/thread_intervals.txt");
+        std::string line;
+
+        while (std::getline(file, line)) {
+            int active_threads;
+            int duration;
+            char comma;
+
+            std::stringstream ss(line);
+
+            if (ss >> active_threads >> comma >> duration && comma == ',') {
+                thread_intervals.emplace_back(active_threads, seconds(duration));
+            } else {
+                std::cerr << "Wrong thread_interval line format: " << line << std::endl;
+            }
+        }
+    }
 };
 
 void register_cmd_options(Settings& settings, cxxopts::Options& cmd) {
