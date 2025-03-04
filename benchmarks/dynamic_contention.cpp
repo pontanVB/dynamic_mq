@@ -24,7 +24,6 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
-#include <filesystem>
 
 #ifdef __SSE2__
 #include <emmintrin.h>
@@ -35,8 +34,6 @@
 
 //TEST INCLUDES
 #include "util/stick_random_dynamic.hpp"
-#include "util/json.hpp"
-
 
 
 using key_type = unsigned long;
@@ -46,7 +43,6 @@ using pq_type = PQ<true, key_type, value_type>;
 using handle_type = pq_type::handle_type;
 
 using namespace std::chrono;
-using json = nlohmann::json;
 
 struct Settings {
     int num_threads = 4;
@@ -62,7 +58,6 @@ struct Settings {
     int timeout_s = 8;
     int sleep_us = 0;
     std::deque<std::pair<int,seconds>> thread_intervals;
-    milliseconds sleep_granularity = milliseconds(10);
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
 #endif
@@ -86,7 +81,7 @@ struct Settings {
             if (ss >> active_threads >> comma >> duration && comma == ',') {
                 thread_intervals.emplace_back(active_threads, seconds(duration));
             } else {
-                std::cerr << "Wrong thread_interval line format: " << line << std::endl;
+                std::cerr << "Wrong thread_intervals line format: " << line << std::endl;
             }
         }
     }
@@ -177,17 +172,13 @@ bool validate_settings(Settings const& settings) {
     }
     for (auto const& e: settings.thread_intervals) {
         if (e.first < 0) {
-            std::cerr << "Error: Active threads must at least 0\n";
+            std::cerr << "Error: Active threads must be at least 0\n";
             return false;
         }
         if (e.second <= seconds(0)) {
             std::cerr << "Error: Contention interval must be greater than 0\n";
             return false;
         }
-    }
-    if (settings.sleep_granularity <= milliseconds(0)) {
-        std::cerr << "Error: Sleep granularity must be greater than 0\n";
-        return false;
     }
 #ifdef LOG_OPERATIONS
     if (settings.log_file.empty()) {
@@ -272,7 +263,6 @@ void write_settings_human_readable(Settings const& settings, std::ostream& out) 
         }
     }
     out << "\n";
-    out << "Sleep granularity: " << settings.sleep_granularity.count() << " ms\n";
 #ifdef LOG_OPERATIONS
     out << "Log file: " << settings.log_file << '\n';
 #endif
@@ -315,7 +305,6 @@ void write_settings_json(Settings const& settings, std::ostream& out) {
         }
     }
     out << ']' << ',';
-    out << std::quoted("sleep_granularity") << ':' << settings.sleep_granularity.count() << ',';
 #ifdef WITH_PAPI
     out << std::quoted("papi_events") << ':';
     out << '[';
@@ -502,11 +491,6 @@ bool hit_timeout(Context& context) {
             context.shared_data().start_time + std::chrono::seconds{context.settings().timeout_s});
 }
 
-bool hit_timeout(Context& context, std::chrono::milliseconds sleep_duration) {
-    return (context.settings().timeout_s != 0 && std::chrono::high_resolution_clock::now() + sleep_duration >
-            context.shared_data().start_time + std::chrono::seconds{context.settings().timeout_s});
-}
-
 bool hit_timeout(Context& context, std::chrono::seconds sleep_duration) {
     return (context.settings().timeout_s != 0 && std::chrono::high_resolution_clock::now() + sleep_duration >
             context.shared_data().start_time + std::chrono::seconds{context.settings().timeout_s});
@@ -521,7 +505,6 @@ void sleep_to_timeout(Context& context) {
 [[gnu::noinline]] void work_loop(Context& context) {
     auto offset = static_cast<value_type>(context.settings().num_threads * context.settings().prefill_per_thread);
     long long max = context.settings().iterations_per_thread * context.settings().num_threads;
-
 
     // OLD -----------------------------------------
     // Wait here until time to work
@@ -555,17 +538,17 @@ void sleep_to_timeout(Context& context) {
     std::chrono::high_resolution_clock::time_point pop_time = std::chrono::high_resolution_clock::now();
     
     while(context.id() >= thread_intervals.front().first){
-        if (hit_timeout(context, context.settings().sleep_granularity)) {
+        if (hit_timeout(context, thread_intervals.front().second)) {
             sleep_to_timeout(context);
             return;
         }
         std::this_thread::sleep_for(thread_intervals.front().second);
-
         thread_intervals.pop_front();
         pop_time = std::chrono::high_resolution_clock::now();
+        if (thread_intervals.empty()) {
+            return;
+        }
     }
-
-    
 
     // Fetch batch of work.
     for (auto from = context.shared_data().counter.fetch_add(context.settings().batch_size, std::memory_order_relaxed);
@@ -579,7 +562,7 @@ void sleep_to_timeout(Context& context) {
                 // OLD - Sleep if more threads are operating than should be active.
                 // Sleep im not supposed to work.
                 if (context.id() >= thread_intervals.front().first) {
-                    if (hit_timeout(context, context.settings().sleep_granularity)) {
+                    if (hit_timeout(context, thread_intervals.front().second)) {
                         sleep_to_timeout(context);
                         break;
                     }
@@ -609,7 +592,7 @@ void sleep_to_timeout(Context& context) {
             }
         }
         context.thread_data().iter_count += to - from;
-        if (hit_timeout(context)) {
+        if (hit_timeout(context) || thread_intervals.empty()) {
             break;
         }
     }
