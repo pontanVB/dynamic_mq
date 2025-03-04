@@ -785,6 +785,10 @@ void run_benchmark(Settings const& settings) {
     std::clog << "Time (s): " << std::fixed << std::setprecision(3)
               << std::chrono::duration<double>(shared_data.end_time - shared_data.start_time).count() << '\n';
     write_result_json(settings, shared_data, std::cout);
+    std::ofstream output;
+    output.open("output/output.json");
+    write_result_json(settings, shared_data, output);
+    output.close();
 }
 
 int main(int argc, char* argv[]) {
