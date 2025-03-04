@@ -11,6 +11,7 @@
 
 namespace results{
     inline int max_contention;
+    thread_local int thread_contenton; //BAD NAME
 }
 
 namespace multiqueue::mode {
@@ -85,6 +86,7 @@ class StickRandomDynamic {
                 return v;
             }
             else { //lock fail
+                ++results::thread_contenton;
                 ++lock_fail_count;
                 if(lock_fail_count > results::max_contention){
                     results::max_contention = lock_fail_count;
@@ -113,6 +115,7 @@ class StickRandomDynamic {
                 return;
             }
             else { //lock fail
+                ++results::thread_contenton;
                 ++lock_fail_count;
                 if(lock_fail_count > results::max_contention){
                     results::max_contention = lock_fail_count;

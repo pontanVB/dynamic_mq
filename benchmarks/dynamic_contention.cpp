@@ -46,7 +46,7 @@ using handle_type = pq_type::handle_type;
 using namespace std::chrono;
 
 struct Settings {
-    int num_threads = 4;
+    int num_threads = 10;
     long long prefill_per_thread = 1 << 20;
     long long iterations_per_thread = 1 << 24;
     key_type min_prefill = 1;
@@ -56,12 +56,15 @@ struct Settings {
     long long batch_size = 1 << 12;
     int seed = 1;
     int affinity = 6;
-    int timeout_s = 8;
+    int timeout_s = 12;
     int sleep_us = 0;
     std::deque<std::pair<int,seconds>> thread_intervals = {
-        {4, seconds(2)}, {3, seconds(2)}, 
-        {2, seconds(2)}, {1, seconds(2)}};
+        {1, seconds(2)}, {3, seconds(2)}, 
+        {1, seconds(2)}, {7, seconds(2)},
+        {1, seconds(2)}, {10, seconds(2)}};
     milliseconds sleep_granularity = milliseconds(10);
+
+
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
 #endif
@@ -314,6 +317,14 @@ void write_settings_json(Settings const& settings, std::ostream& out) {
 struct ThreadData {
     long long iter_count = 0;
     long long failed_pop_count = 0;
+
+    //Interval data (There's probably a more convenient way to do this)
+    std::vector<std::pair<int,int>> fail_data;
+    std::vector<int> interval_fails;
+    std::vector<long long> interval_iterations;
+    long long interval_prev_iter = 0;
+    long long interval_prev_fails = 0;
+
 #ifdef WITH_PAPI
     std::vector<long long> papi_event_counter{};
 #endif
@@ -334,7 +345,21 @@ struct ThreadData {
 void write_thread_data_json(ThreadData const& data, std::ostream& out) {
     out << '{';
     out << std::quoted("iterations") << ':' << data.iter_count << ',';
-    out << std::quoted("failed_pops") << ':' << data.failed_pop_count;
+    out << std::quoted("failed_pops") << ':' << data.failed_pop_count << ',';
+    out << std::quoted("fail_data") << ": [\n"; 
+    for (size_t i = 0; i < data.interval_fails.size(); ++i) {
+        out << "    {" 
+            << std::quoted("interval") << ':' << i << ','
+            << std::quoted("interval_iterations") << ':' << data.interval_iterations[i] << ','
+            << std::quoted("interval_fails") << ':' << data.interval_fails[i]
+            << '}';
+        
+        if (i != data.interval_fails.size() - 1) {
+            out << ','; 
+        }
+        out << '\n'; 
+    }
+    out << "]\n"; 
 #ifdef WITH_PAPI
     out << ',';
     out << std::quoted("papi_event_counter") << ':';
@@ -404,7 +429,7 @@ void write_result_json(Settings const& settings, SharedData const& data, std::os
     out << std::quoted("results") << ':';
     out << '{';
     out << std::quoted("time_ns") << ':' << std::chrono::nanoseconds{data.end_time - data.start_time}.count() << ',';
-    out << std::quoted("failed_locks") << ':' << results::max_contention << ',';
+    out << std::quoted("max_contention") << ':' << results::max_contention << ',';
     out << std::quoted("thread_data") << ':';
     out << '[';
     for (auto it = data.thread_data.begin(); it != data.thread_data.end(); ++it) {
@@ -497,6 +522,17 @@ void sleep_to_timeout(Context& context) {
                                 std::chrono::high_resolution_clock::now());
 }
 
+
+// Save the contentnion for this thread and reset the counter for measuring in the next interval 
+void record_iteration(Context& context){
+    long long iterations = context.thread_data().iter_count;
+    context.thread_data().interval_iterations.emplace_back(iterations - context.thread_data().interval_prev_iter);
+    context.thread_data().interval_prev_iter = iterations;
+    context.thread_data().interval_fails.emplace_back(results::thread_contenton - context.thread_data().interval_prev_fails);
+    context.thread_data().interval_prev_fails = results::thread_contenton;
+    
+}
+
 [[gnu::noinline]] void work_loop(Context& context) {
     auto offset = static_cast<value_type>(context.settings().num_threads * context.settings().prefill_per_thread);
     long long max = context.settings().iterations_per_thread * context.settings().num_threads;
@@ -540,6 +576,8 @@ void sleep_to_timeout(Context& context) {
         }
         std::this_thread::sleep_for(thread_intervals.front().second);
 
+        //recording failiures for each time interval, done before each pop:
+        record_iteration(context);
         thread_intervals.pop_front();
         pop_time = std::chrono::high_resolution_clock::now();
     }
@@ -563,10 +601,12 @@ void sleep_to_timeout(Context& context) {
                         break;
                     }
                     std::this_thread::sleep_for(thread_intervals.front().second);
+                    record_iteration(context);                    
                     thread_intervals.pop_front();
                     pop_time = std::chrono::high_resolution_clock::now();
                     continue;
                 } else if (std::chrono::high_resolution_clock::now() - pop_time >= thread_intervals.front().second) {
+                    record_iteration(context);
                     thread_intervals.pop_front();
                     pop_time = std::chrono::high_resolution_clock::now();
                     continue;
