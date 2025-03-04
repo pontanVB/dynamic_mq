@@ -11,7 +11,7 @@
 
 namespace results{
     inline int max_contention;
-    thread_local int thread_contenton; //BAD NAME
+    thread_local int lock_fails = 0; //BAD NAME
 }
 
 namespace multiqueue::mode {
@@ -24,7 +24,7 @@ class StickRandomDynamic {
     struct Config {
         int seed{1};
         int stickiness{16};
-        int contention_threshhold{5}; //usecase?????
+        int contention_threshhold{5}; // unused
     };
 
     struct SharedData {
@@ -86,7 +86,7 @@ class StickRandomDynamic {
                 return v;
             }
             else { //lock fail
-                ++results::thread_contenton;
+                ++results::lock_fails;
                 ++lock_fail_count;
                 if(lock_fail_count > results::max_contention){
                     results::max_contention = lock_fail_count;
@@ -115,7 +115,7 @@ class StickRandomDynamic {
                 return;
             }
             else { //lock fail
-                ++results::thread_contenton;
+                ++results::lock_fails;
                 ++lock_fail_count;
                 if(lock_fail_count > results::max_contention){
                     results::max_contention = lock_fail_count;

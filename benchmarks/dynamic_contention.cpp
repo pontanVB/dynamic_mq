@@ -45,7 +45,7 @@ using handle_type = pq_type::handle_type;
 using namespace std::chrono;
 
 struct Settings {
-    int num_threads = 10;
+    int num_threads = 4;
     long long prefill_per_thread = 1 << 20;
     long long iterations_per_thread = 1 << 24;
     key_type min_prefill = 1;
@@ -327,8 +327,8 @@ struct ThreadData {
 
     //Interval data (There's probably a more convenient way to do this)
     std::vector<std::pair<int,int>> fail_data;
-    std::vector<int> interval_fails;
-    std::vector<long long> interval_iterations;
+    std::vector<int> interval_fails = {};
+    std::vector<long long> interval_iterations = {};
     long long interval_prev_iter = 0;
     long long interval_prev_fails = 0;
 
@@ -530,8 +530,8 @@ void record_iteration(Context& context){
     long long iterations = context.thread_data().iter_count;
     context.thread_data().interval_iterations.emplace_back(iterations - context.thread_data().interval_prev_iter);
     context.thread_data().interval_prev_iter = iterations;
-    context.thread_data().interval_fails.emplace_back(results::thread_contenton - context.thread_data().interval_prev_fails);
-    context.thread_data().interval_prev_fails = results::thread_contenton;
+    context.thread_data().interval_fails.emplace_back(results::lock_fails - context.thread_data().interval_prev_fails);
+    context.thread_data().interval_prev_fails = results::lock_fails;
     
 }
 
@@ -567,6 +567,8 @@ void record_iteration(Context& context){
     // Wait here until time to work
     // Sleeping if im not suppsed to work, then update the list and look if "im" supposed to work at the next interval
 
+    results::lock_fails = 0;
+    results::max_contention = 0;
     auto thread_intervals = context.settings().thread_intervals;
     std::chrono::high_resolution_clock::time_point pop_time = std::chrono::high_resolution_clock::now();
     
@@ -577,7 +579,7 @@ void record_iteration(Context& context){
         }
         std::this_thread::sleep_for(thread_intervals.front().second);
 
-        //recording failiures for each time interval, done before each pop:
+        // recording failiures for each time interval, done before each pop:
         record_iteration(context);
         thread_intervals.pop_front();
         pop_time = std::chrono::high_resolution_clock::now();
@@ -745,7 +747,6 @@ void run_benchmark(Settings const& settings) {
             benchmark_thread(Context(std::move(ctx), pq.get_handle(), shared_data, settings));
         });
 
-        // Wait until timeout and then stop?
         dispatcher.wait();
     };
     switch (settings.affinity) {
