@@ -12,6 +12,7 @@
 namespace results{
     inline int max_contention;
     thread_local int lock_fails = 0; //BAD NAME
+    thread_local int dynamic_stickiness = 16;
 }
 
 namespace multiqueue::mode {
@@ -24,7 +25,10 @@ class StickRandomDynamic {
     struct Config {
         int seed{1};
         int stickiness{16};
-        int contention_threshhold{5}; // unused
+        int increment{2}; // change names
+        int decrement{1};
+        int upper_threshhold{5};
+        int lower_threshhold{-5};
     };
 
     struct SharedData {
@@ -39,6 +43,8 @@ class StickRandomDynamic {
     std::array<std::size_t, static_cast<std::size_t>(num_pop_candidates)> pop_index_{};
     int count_{};
     int lock_fail_count = 0;
+    int lock_acquisition = 0;
+    bool already_fetched = false;
 
     void refresh_pop_index(std::size_t num_pqs) noexcept {
         for (auto it = pop_index_.begin(); it != pop_index_.end(); ++it) {
@@ -57,9 +63,13 @@ class StickRandomDynamic {
 
     template <typename Context>
     std::optional<typename Context::value_type> try_pop(Context& ctx) {
+        if (!already_fetched) {
+            results::dynamic_stickiness = ctx.config().stickiness;
+            already_fetched = true;
+        }
         if (count_ == 0) {
             refresh_pop_index(ctx.num_pqs());
-            count_ = ctx.config().stickiness;
+            count_ = results::dynamic_stickiness;
         }
         while (true) {
             std::size_t best = pop_index_[0];
@@ -83,6 +93,13 @@ class StickRandomDynamic {
                 guard.popped();
                 guard.unlock();
                 --count_;
+                lock_acquisition -= ctx.config().decrement;
+                if (lock_acquisition <= ctx.config().lower_threshhold) {
+                    if (results::dynamic_stickiness > 1) {
+                        results::dynamic_stickiness /= 2;
+                    }
+                    lock_acquisition = 0;
+                }
                 return v;
             }
             else { //lock fail
@@ -91,18 +108,26 @@ class StickRandomDynamic {
                 if(lock_fail_count > results::max_contention){
                     results::max_contention = lock_fail_count;
                 }
-                
+                lock_acquisition += ctx.config().increment;
+                if (lock_acquisition >= ctx.config().upper_threshhold) {
+                    results::dynamic_stickiness *= 2;
+                    lock_acquisition = 0;
+                }
             }
             refresh_pop_index(ctx.num_pqs());
-            count_ = ctx.config().stickiness;
+            count_ = results::dynamic_stickiness;
         }
     }
 
     template <typename Context>
     void push(Context& ctx, typename Context::value_type const& v) {
+        if (!already_fetched) {
+            results::dynamic_stickiness = ctx.config().stickiness;
+            already_fetched = true;
+        }
         if (count_ == 0) {
             refresh_pop_index(ctx.num_pqs());
-            count_ = ctx.config().stickiness;
+            count_ = results::dynamic_stickiness;
         }
         std::size_t push_index = rng_() % num_pop_candidates;
         while (true) {
@@ -112,6 +137,13 @@ class StickRandomDynamic {
                 guard.pushed();
                 guard.unlock();
                 --count_;
+                lock_acquisition -= ctx.config().decrement;
+                if (lock_acquisition <= ctx.config().lower_threshhold) {
+                    if (results::dynamic_stickiness > 1) {
+                        results::dynamic_stickiness /= 2;
+                    }
+                    lock_acquisition = 0;
+                }
                 return;
             }
             else { //lock fail
@@ -120,10 +152,14 @@ class StickRandomDynamic {
                 if(lock_fail_count > results::max_contention){
                     results::max_contention = lock_fail_count;
                 }
-
+                lock_acquisition += ctx.config().increment;
+                if (lock_acquisition >= ctx.config().upper_threshhold) {
+                    results::dynamic_stickiness *= 2;
+                    lock_acquisition = 0;
+                }
             }
             refresh_pop_index(ctx.num_pqs());
-            count_ = ctx.config().stickiness;
+            count_ = results::dynamic_stickiness;
         }
     }
 };

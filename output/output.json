@@ -1,154 +1,20 @@
-{
-    "settings": {
-        "num_threads": 4,
-        "prefill_per_thread": 1048576,
-        "iterations_per_thread": 16777216,
-        "prefill_min": 1,
-        "prefill_max": 1048576,
-        "update_min": 0,
-        "update_max": 1048576,
-        "batch_size": 4096,
-        "seed": 1,
-        "affinity": 6,
-        "timeout_s": 12,
-        "sleep_us": 0,
-        "thread_intervals": [
-            {
-                "active_threads": 3,
-                "duration": 2
-            },
-            {
-                "active_threads": 2,
-                "duration": 2
-            },
-            {
-                "active_threads": 1,
-                "duration": 1
-            },
-            {
-                "active_threads": 0,
-                "duration": 2
-            }
-        ],
-        "papi_events": [],
-        "pq": {
-            "queue_factor": 2,
-            "seed": 1,
-            "stickiness": 16
-        }
-    },
-    "results": {
-        "time_ns": 7000576928,
-        "max_contention": 769188,
-        "thread_data": [
-            {
-                "iterations": 10289152,
-                "failed_pops": 0,
-                "fail_data": [
-                    {
-                        "interval": 0,
-                        "interval_iterations": 3764224,
-                        "interval_fails": 453376
-                    },
-                    {
-                        "interval": 1,
-                        "interval_iterations": 4161536,
-                        "interval_fails": 196545
-                    },
-                    {
-                        "interval": 2,
-                        "interval_iterations": 2359296,
-                        "interval_fails": 1
-                    },
-                    {
-                        "interval": 3,
-                        "interval_iterations": 0,
-                        "interval_fails": 0
-                    }
-                ],
-                "papi_event_counter": []
-            },
-            {
-                "iterations": 8048640,
-                "failed_pops": 0,
-                "fail_data": [
-                    {
-                        "interval": 0,
-                        "interval_iterations": 3842048,
-                        "interval_fails": 459404
-                    },
-                    {
-                        "interval": 1,
-                        "interval_iterations": 4202496,
-                        "interval_fails": 196331
-                    },
-                    {
-                        "interval": 2,
-                        "interval_iterations": 0,
-                        "interval_fails": 0
-                    },
-                    {
-                        "interval": 3,
-                        "interval_iterations": 0,
-                        "interval_fails": 0
-                    }
-                ],
-                "papi_event_counter": []
-            },
-            {
-                "iterations": 3792896,
-                "failed_pops": 0,
-                "fail_data": [
-                    {
-                        "interval": 0,
-                        "interval_iterations": 3788800,
-                        "interval_fails": 455633
-                    },
-                    {
-                        "interval": 1,
-                        "interval_iterations": 0,
-                        "interval_fails": 0
-                    },
-                    {
-                        "interval": 2,
-                        "interval_iterations": 0,
-                        "interval_fails": 0
-                    },
-                    {
-                        "interval": 3,
-                        "interval_iterations": 0,
-                        "interval_fails": 0
-                    }
-                ],
-                "papi_event_counter": []
-            },
-            {
-                "iterations": 0,
-                "failed_pops": 0,
-                "fail_data": [
-                    {
-                        "interval": 0,
-                        "interval_iterations": 0,
-                        "interval_fails": 0
-                    },
-                    {
-                        "interval": 1,
-                        "interval_iterations": 0,
-                        "interval_fails": 0
-                    },
-                    {
-                        "interval": 2,
-                        "interval_iterations": 0,
-                        "interval_fails": 0
-                    },
-                    {
-                        "interval": 3,
-                        "interval_iterations": 0,
-                        "interval_fails": 0
-                    }
-                ],
-                "papi_event_counter": []
-            }
-        ]
-    }
-}
+{"settings":{"num_threads":4,"prefill_per_thread":1048576,"iterations_per_thread":16777216,"prefill_min":1,"prefill_max":1048576,"update_min":0,"update_max":1048576,"batch_size":4096,"seed":1,"affinity":6,"timeout_s":5,"sleep_us":0,"thread_intervals":[{"active_threads":3,"duration":2},{"active_threads":2,"duration":2},{"active_threads":1,"duration":1},{"active_threads":0,"duration":2}],"papi_events":[],"pq":{"queue_factor":2,"seed":1,"stickiness":16}},"results":{"time_ns":5000335097,"max_contention":3293924,"thread_data":[{"iterations":10272768,"failed_pops":0,"fail_data": [
+    {"interval":0,"interval_iterations":3952640,"interval_fails":2113159},
+    {"interval":1,"interval_iterations":3911680,"interval_fails":993919},
+    {"interval":2,"interval_iterations":2404352,"interval_fails":0}
+]
+,"papi_event_counter":[]},{"iterations":7847936,"failed_pops":0,"fail_data": [
+    {"interval":0,"interval_iterations":3936256,"interval_fails":2109022},
+    {"interval":1,"interval_iterations":3907584,"interval_fails":988354}
+]
+,"papi_event_counter":[]},{"iterations":3923968,"failed_pops":0,"fail_data": [
+    {"interval":0,"interval_iterations":3919872,"interval_fails":2096202},
+    {"interval":1,"interval_iterations":0,"interval_fails":0}
+]
+,"papi_event_counter":[]},{"iterations":0,"failed_pops":0,"fail_data": [
+    {"interval":0,"interval_iterations":0,"interval_fails":0},
+    {"interval":1,"interval_iterations":0,"interval_fails":0},
+    {"interval":2,"interval_iterations":0,"interval_fails":0},
+    {"interval":3,"interval_iterations":0,"interval_fails":0}
+]
+,"papi_event_counter":[]}]}}

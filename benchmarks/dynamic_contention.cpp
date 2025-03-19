@@ -60,6 +60,7 @@ struct Settings {
     std::deque<std::pair<int,seconds>> thread_intervals;
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
+    std::filesystem::path log_file_metrics = "metrics_log.txt";
 #endif
 #ifdef WITH_PAPI
     std::vector<std::string> papi_events;
@@ -112,6 +113,7 @@ void register_cmd_options(Settings& settings, cxxopts::Options& cmd) {
             ("q,sleep", "Time in microseconds to wait between operations", cxxopts::value<int>(settings.sleep_us), "NUMBER")
 #ifdef LOG_OPERATIONS
             ("l,log-file", "File to write the operation log to", cxxopts::value<std::filesystem::path>(settings.log_file), "PATH")
+            ("m,log-file_metrics", "File to write the metric log to", cxxopts::value<std::filesystem::path>(settings.log_file_metrics), "PATH")
 #endif
 #ifdef WITH_PAPI
             ("r,count-event", "Papi event to count", cxxopts::value<std::vector<std::string>>(settings.papi_events), "STRING")
@@ -265,6 +267,7 @@ void write_settings_human_readable(Settings const& settings, std::ostream& out) 
     out << "\n";
 #ifdef LOG_OPERATIONS
     out << "Log file: " << settings.log_file << '\n';
+    out << "Log file Metrics: " << settings.log_file_metrics << '\n';
 #endif
 #ifdef WITH_PAPI
     out << "PAPI events: [";
@@ -344,8 +347,15 @@ struct ThreadData {
         std::chrono::high_resolution_clock::time_point tick;
         value_type val;
     };
+    struct DynamicLog {
+        std::chrono::high_resolution_clock::time_point tick;
+        int stickiness;
+        int active_threads;
+        int total_iterations; // For throughput measurement, might tweak.
+    };
     std::vector<PushLog> pushes;
     std::vector<PopLog> pops;
+    std::vector<DynamicLog> metrics;
 #endif
 };
 
@@ -413,6 +423,19 @@ void write_log(std::vector<ThreadData> const& thread_data, std::ostream& out) {
         out << i << ' ' << pushes[i].element.first << '\n';
     }
 }
+
+void write_log_metrics(std::vector<ThreadData> const& thread_data, std::ostream& out) {
+    std::vector<ThreadData::DynamicLog> metrics;
+    metrics.reserve(std::accumulate(thread_data.begin(), thread_data.end(), 0UL,
+                                   [](std::size_t sum, auto const& e) { return sum + e.metrics.size(); }));
+    for (auto const& e : thread_data) {
+        metrics.insert(metrics.end(), e.metrics.begin(), e.metrics.end());
+    }
+    for (auto const& metric : metrics) {
+        out << metric.tick.time_since_epoch().count() << ',' << metric.stickiness << ',' 
+            << metric.active_threads << ',' << metric.total_iterations << '\n';
+    }
+}
 #endif
 
 struct SharedData {
@@ -470,6 +493,7 @@ class Context : public thread_coordination::Context {
         handle_.push(e);
         auto tick = std::chrono::high_resolution_clock::now();
         thread_data_.pushes.push_back({tick, e});
+        thread_data_.metrics.push_back({tick, results::dynamic_stickiness, settings_->thread_intervals.front().first, 0});
     }
 
     auto try_pop() {
@@ -478,6 +502,7 @@ class Context : public thread_coordination::Context {
         if (retval) {
             thread_data_.pops.push_back({tick, retval->second});
         }
+        thread_data_.metrics.push_back({tick, results::dynamic_stickiness, settings_->thread_intervals.front().first, 0});
         return retval;
     }
 #else
@@ -525,52 +550,22 @@ void sleep_to_timeout(Context& context) {
 }
 
 
-// Save the contentnion for this thread and reset the counter for measuring in the next interval 
+// Save the contention for this thread and reset the counter for measuring in the next interval.
 void record_iteration(Context& context){
     long long iterations = context.thread_data().iter_count;
     context.thread_data().interval_iterations.emplace_back(iterations - context.thread_data().interval_prev_iter);
     context.thread_data().interval_prev_iter = iterations;
     context.thread_data().interval_fails.emplace_back(results::lock_fails - context.thread_data().interval_prev_fails);
     context.thread_data().interval_prev_fails = results::lock_fails;
-    
 }
 
 [[gnu::noinline]] void work_loop(Context& context) {
     auto offset = static_cast<value_type>(context.settings().num_threads * context.settings().prefill_per_thread);
     long long max = context.settings().iterations_per_thread * context.settings().num_threads;
-
-    // OLD -----------------------------------------
-    // Wait here until time to work
-    // for (auto const& e: context.settings().thread_intervals) {
-    //     context.shared_data().active_threads = e.first;
-    //     if (hit_timeout(context, e.second)) {
-    //         sleep_to_timeout(context);
-    //         break;
-    //     }
-    //     std::this_thread::sleep_for(e.second);
-    // }
-
-    // // -- Worker Threads --
-    // // Sleep if more threads are operating than should be active (avoid fetching if sleeping from the beginning).
-    // while (context.id() >= context.shared_data().active_threads) {
-    //     if (context.shared_data().stop) {
-    //         return;
-    //     }
-    //     if (hit_timeout(context, context.settings().sleep_granularity)) {
-    //         sleep_to_timeout(context);
-    //         return;
-    //     }
-    //     std::this_thread::sleep_for(context.settings().sleep_granularity);
-    // }
-    // OLD end -----------------------------------------
-
-    // Wait here until time to work
-    // Sleeping if im not suppsed to work, then update the list and look if "im" supposed to work at the next interval
-
     results::lock_fails = 0;
     results::max_contention = 0;
     auto thread_intervals = context.settings().thread_intervals;
-    std::chrono::high_resolution_clock::time_point pop_time = std::chrono::high_resolution_clock::now();
+    std::chrono::high_resolution_clock::time_point pop_time = context.shared_data().start_time;
     
     while(context.id() >= thread_intervals.front().first){
         if (hit_timeout(context, thread_intervals.front().second)) {
@@ -676,6 +671,7 @@ void benchmark_thread(Context context) {
     context.thread_data().pushes.reserve(
         static_cast<std::size_t>(context.settings().prefill_per_thread + 2 * context.settings().iterations_per_thread));
     context.thread_data().pops.reserve(static_cast<std::size_t>(2 * context.settings().iterations_per_thread));
+    context.thread_data().metrics.reserve(static_cast<std::size_t>(context.settings().prefill_per_thread + 4 * context.settings().iterations_per_thread));
 #endif
 
     std::vector<key_type> prefill(static_cast<std::size_t>(context.settings().prefill_per_thread));
@@ -778,6 +774,10 @@ void run_benchmark(Settings const& settings) {
     std::ofstream log_out(settings.log_file);  // assumed to be valid
     write_log(shared_data.thread_data, log_out);
     log_out.close();
+    std::clog << "Writing metric logs...\n";
+    std::ofstream metric_log_out(settings.log_file_metrics);  // assumed to be valid
+    write_log(shared_data.thread_data, metric_log_out);
+    metric_log_out.close();
 #endif
     std::clog << "Done\n";
     std::clog << '\n';
