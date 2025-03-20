@@ -1,6 +1,9 @@
 #include "util/build_info.hpp"
 #include "util/selector.hpp"
 #include "util/thread_coordination.hpp"
+
+#define LOG_OPERATIONS
+
 #ifdef LOG_OPERATIONS
 #include "util/operation_log.hpp"
 #endif
@@ -405,7 +408,15 @@ void write_log(std::vector<ThreadData> const& thread_data, std::ostream& out) {
         pops.insert(pops.end(), e.pops.begin(), e.pops.end());
     }
     std::sort(pushes.begin(), pushes.end(), [](auto const& lhs, auto const& rhs) { return lhs.tick < rhs.tick; });
-    std::vector<std::size_t> push_index(pushes.size());
+
+
+    value_type max_value = 0;
+    for (const auto& push : pushes) {
+        max_value = std::max(max_value, push.element.second);
+    }
+
+
+    std::vector<std::size_t> push_index(max_value);
     for (std::size_t i = 0; i < pushes.size(); ++i) {
         push_index[pushes[i].element.second] = i;
     }
@@ -774,9 +785,10 @@ void run_benchmark(Settings const& settings) {
     std::ofstream log_out(settings.log_file);  // assumed to be valid
     write_log(shared_data.thread_data, log_out);
     log_out.close();
+
     std::clog << "Writing metric logs...\n";
     std::ofstream metric_log_out(settings.log_file_metrics);  // assumed to be valid
-    write_log(shared_data.thread_data, metric_log_out);
+    write_log_metrics(shared_data.thread_data, metric_log_out);
     metric_log_out.close();
 #endif
     std::clog << "Done\n";
