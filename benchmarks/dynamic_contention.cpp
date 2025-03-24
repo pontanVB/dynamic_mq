@@ -567,6 +567,7 @@ bool process_intervals(Context& context,
     while (context.id() >= thread_intervals.front().first) {
         if (will_hit_timeout(timeout, interval_times.front())) {
             std::this_thread::sleep_until(timeout);
+            record_interval(context);
             return true;
         }
         std::this_thread::sleep_until(interval_times.front());
@@ -602,7 +603,6 @@ bool process_intervals(Context& context,
     // Sleep if this thread should be inactive from the beginning.
     // Exit if intervals are over or if timeout is reached.
     if (process_intervals(context, thread_intervals, interval_times, timeout)) {
-        record_interval(context);
         return;
     }
     // Loop through all work in batches.
@@ -644,7 +644,6 @@ bool process_intervals(Context& context,
         // Sleep if this thread should be inactive.
         // Exit if intervals are over or if timeout is reached.
         if (process_intervals(context, thread_intervals, interval_times, timeout)) {
-            record_interval(context);
             return;
         }
     }
