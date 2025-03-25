@@ -2,8 +2,6 @@
 #include "util/selector.hpp"
 #include "util/thread_coordination.hpp"
 
-#define LOG_OPERATIONS
-
 #ifdef LOG_OPERATIONS
 #include "util/operation_log.hpp"
 #endif

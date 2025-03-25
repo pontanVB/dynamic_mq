@@ -12,7 +12,7 @@
 
 
 namespace results{
-    inline int max_contention = 0; //temp, prob remove
+    inline double max_contention = 0; //temp, prob remove
     thread_local int lock_fails = 0; //BAD NAME
     thread_local int dynamic_stickiness = 16;
     thread_local double fail_rate;
