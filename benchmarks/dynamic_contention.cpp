@@ -27,6 +27,7 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <filesystem>
 
 #ifdef __SSE2__
 #include <emmintrin.h>
@@ -45,8 +46,6 @@ using value_type = unsigned long;
 using pq_type = PQ<true, key_type, value_type>;
 using handle_type = pq_type::handle_type;
 
-using namespace std::chrono;
-
 struct Settings {
     int num_threads = 4;
     long long prefill_per_thread = 1 << 20;
@@ -60,7 +59,8 @@ struct Settings {
     int affinity = 6;
     int timeout_s = 12;
     int sleep_us = 0;
-    std::deque<std::pair<int,seconds>> thread_intervals;
+    std::deque<std::pair<int,std::chrono::seconds>> thread_intervals;
+    std::filesystem::path interval_file = "benchmarks/util/thread_intervals.txt";
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
     std::filesystem::path log_file_metrics = "metrics_log.txt";
@@ -72,7 +72,7 @@ struct Settings {
 
     // Constructor that loads the thread_interval data.
     Settings() {
-        std::ifstream file("benchmarks/util/thread_intervals.txt");
+        std::ifstream file(interval_file);
         std::string line;
 
         while (std::getline(file, line)) {
@@ -83,7 +83,7 @@ struct Settings {
             std::stringstream ss(line);
 
             if (ss >> active_threads >> comma >> duration && comma == ',') {
-                thread_intervals.emplace_back(active_threads, seconds(duration));
+                thread_intervals.emplace_back(active_threads, std::chrono::seconds(duration));
             } else {
                 std::cerr << "Wrong thread_intervals line format: " << line << std::endl;
             }
@@ -114,6 +114,7 @@ void register_cmd_options(Settings& settings, cxxopts::Options& cmd) {
                 , cxxopts::value<int>(settings.affinity), "NUMBER")
             ("t,timeout", "Timeout in seconds", cxxopts::value<int>(settings.timeout_s), "NUMBER")
             ("q,sleep", "Time in microseconds to wait between operations", cxxopts::value<int>(settings.sleep_us), "NUMBER")
+            ("i,thread-interval-file", "File to read thread intervals from", cxxopts::value<std::filesystem::path>(settings.interval_file), "PATH")
 #ifdef LOG_OPERATIONS
             ("l,log-file", "File to write the operation log to", cxxopts::value<std::filesystem::path>(settings.log_file), "PATH")
             ("m,log-file_metrics", "File to write the metric log to", cxxopts::value<std::filesystem::path>(settings.log_file_metrics), "PATH")
@@ -180,7 +181,7 @@ bool validate_settings(Settings const& settings) {
             std::cerr << "Error: Active threads must be at least 0\n";
             return false;
         }
-        if (e.second <= seconds(0)) {
+        if (e.second <= std::chrono::seconds(0)) {
             std::cerr << "Error: Contention interval must be greater than 0\n";
             return false;
         }
@@ -552,25 +553,8 @@ class Context : public thread_coordination::Context {
     }
 };
 
-bool hit_timeout(Context& context) {
-    return (context.settings().timeout_s != 0 && std::chrono::high_resolution_clock::now() >
-            context.shared_data().start_time + std::chrono::seconds{context.settings().timeout_s});
-}
-
-bool hit_timeout(Context& context, std::chrono::seconds sleep_duration) {
-    return (context.settings().timeout_s != 0 && std::chrono::high_resolution_clock::now() + sleep_duration >
-            context.shared_data().start_time + std::chrono::seconds{context.settings().timeout_s});
-}
-
-void sleep_to_timeout(Context& context) {
-    std::this_thread::sleep_for(context.shared_data().start_time + 
-                                std::chrono::seconds{context.settings().timeout_s} - 
-                                std::chrono::high_resolution_clock::now());
-}
-
-
 // Save the contention for this thread and reset the counter for measuring in the next interval.
-void record_iteration(Context& context){
+void record_interval(Context& context){
     long long iterations = context.thread_data().iter_count;
     context.thread_data().interval_iterations.emplace_back(iterations - context.thread_data().interval_prev_iter);
     context.thread_data().interval_prev_iter = iterations;
@@ -578,76 +562,97 @@ void record_iteration(Context& context){
     context.thread_data().interval_prev_fails = results::lock_fails;
 }
 
+bool will_hit_timeout(std::chrono::high_resolution_clock::time_point timeout, 
+                      std::chrono::high_resolution_clock::time_point interval_end) {
+    return (timeout.time_since_epoch().count() != 0 && interval_end > timeout);
+}
+
+// Process waiting during intervals and signal if work loop should be exited.
+bool process_intervals(Context& context, 
+                       std::deque<std::pair<int,std::chrono::seconds>>& thread_intervals,
+                       std::deque<std::chrono::high_resolution_clock::time_point>& interval_times,
+                       std::chrono::high_resolution_clock::time_point& timeout) {
+    while (context.id() >= thread_intervals.front().first) {
+        if (will_hit_timeout(timeout, interval_times.front())) {
+            std::this_thread::sleep_until(timeout);
+            record_interval(context);
+            return true;
+        }
+        std::this_thread::sleep_until(interval_times.front());
+        interval_times.pop_front();
+        record_interval(context);
+        thread_intervals.pop_front();
+        if (thread_intervals.empty()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 [[gnu::noinline]] void work_loop(Context& context) {
     auto offset = static_cast<value_type>(context.settings().num_threads * context.settings().prefill_per_thread);
     long long max = context.settings().iterations_per_thread * context.settings().num_threads;
+    auto thread_intervals = context.settings().thread_intervals;
+    std::deque<std::chrono::high_resolution_clock::time_point> interval_times;
+    std::chrono::high_resolution_clock::time_point interval_end = context.shared_data().start_time;
+    // Make timeout a time point.
+    std::chrono::high_resolution_clock::time_point timeout{};
+    if (context.settings().timeout_s != 0) {
+        timeout = context.shared_data().start_time + std::chrono::seconds(context.settings().timeout_s);
+    }
+    // Calculate time points of interval transitions.
+    for (std::pair<int,std::chrono::seconds> interval : thread_intervals) {
+        interval_end += interval.second;
+        interval_times.emplace_back(interval_end);
+    }
+    // Reset counters after prefill.
     results::lock_fails = 0;
     results::max_contention = 0;
-    auto thread_intervals = context.settings().thread_intervals;
-    std::chrono::high_resolution_clock::time_point pop_time = context.shared_data().start_time;
-    
-    while(context.id() >= thread_intervals.front().first){
-        if (hit_timeout(context, thread_intervals.front().second)) {
-            sleep_to_timeout(context);
-            return;
-        }
-        std::this_thread::sleep_for(thread_intervals.front().second);
-
-        // recording failiures for each time interval, done before each pop:
-        record_iteration(context);
-        thread_intervals.pop_front();
-        pop_time = std::chrono::high_resolution_clock::now();
-        if (thread_intervals.empty()) {
-            return;
-        }
+    // Sleep if this thread should be inactive from the beginning.
+    // Exit if intervals are over or if timeout is reached.
+    if (process_intervals(context, thread_intervals, interval_times, timeout)) {
+        return;
     }
-
-    // Fetch batch of work.
+    // Loop through all work in batches.
     for (auto from = context.shared_data().counter.fetch_add(context.settings().batch_size, std::memory_order_relaxed);
-        from < max;
-        from = context.shared_data().counter.fetch_add(context.settings().batch_size, std::memory_order_relaxed)) {
+         from < max;
+         from = context.shared_data().counter.fetch_add(context.settings().batch_size, std::memory_order_relaxed)) {
         
         auto to = std::min(from + context.settings().batch_size, max);
+        // Loop through batch of work.
         for (auto i = from; i < to; ++i) {
-            // OLD - Work until coordinator declares a stop or the timeout is reached.
-            while (!thread_intervals.empty()) {
-                // OLD - Sleep if more threads are operating than should be active.
-                // Sleep im not supposed to work.
-                if (context.id() >= thread_intervals.front().first) {
-                    if (hit_timeout(context, thread_intervals.front().second)) {
-                        sleep_to_timeout(context);
-                        break;
-                    }
-                    std::this_thread::sleep_for(thread_intervals.front().second);
-                    record_iteration(context);                    
-                    thread_intervals.pop_front();
-                    pop_time = std::chrono::high_resolution_clock::now();
-                    continue;
-                } else if (std::chrono::high_resolution_clock::now() - pop_time >= thread_intervals.front().second) {
-                    record_iteration(context);
-                    thread_intervals.pop_front();
-                    pop_time = std::chrono::high_resolution_clock::now();
-                    continue;
-                }
+            while (true) {
                 if (auto e = context.try_pop(); e) {
                     if (context.settings().sleep_us != 0) {
                         auto sleep_until = std::chrono::high_resolution_clock::now() +
-                                            std::chrono::microseconds{context.settings().sleep_us};
+                            std::chrono::microseconds{context.settings().sleep_us};
                         while (std::chrono::high_resolution_clock::now() < sleep_until) {
                             PAUSE;
                         }
                     }
                     context.push({static_cast<key_type>(static_cast<long long>(e->first) +
                                                         context.shared_data().updates[static_cast<std::size_t>(i)]),
-                                                        offset + static_cast<value_type>(i)});
+                                  offset + static_cast<value_type>(i)});
                     break;
                 }
                 ++context.thread_data().failed_pop_count;
             }
         }
         context.thread_data().iter_count += to - from;
-        if (hit_timeout(context) || thread_intervals.empty()) {
-            break;
+        if (timeout.time_since_epoch().count() != 0 && std::chrono::high_resolution_clock::now() > timeout) {
+            record_interval(context);
+            return;
+        }
+        // Finish if the interval is over.
+        if (std::chrono::high_resolution_clock::now() >= interval_times.front()) {
+            interval_times.pop_front();
+            record_interval(context);
+            thread_intervals.pop_front();
+        }
+        // Sleep if this thread should be inactive.
+        // Exit if intervals are over or if timeout is reached.
+        if (process_intervals(context, thread_intervals, interval_times, timeout)) {
+            return;
         }
     }
 }
