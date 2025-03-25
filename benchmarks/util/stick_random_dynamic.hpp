@@ -8,11 +8,14 @@
 #include <cstddef>
 #include <optional>
 #include <random>
+#include <iostream>
+
 
 namespace results{
-    inline int max_contention;
+    inline int max_contention = 0; //temp, prob remove
     thread_local int lock_fails = 0; //BAD NAME
     thread_local int dynamic_stickiness = 16;
+    thread_local double fail_rate;
 }
 
 namespace multiqueue::mode {
@@ -42,8 +45,9 @@ class StickRandomDynamic {
     pcg32 rng_{};
     std::array<std::size_t, static_cast<std::size_t>(num_pop_candidates)> pop_index_{};
     int count_{};
-    int lock_fail_count = 0;
-    int lock_acquisition = 0;
+    double lock_fail_count_{};
+    double lock_success_count_{};
+    int lock_balance = 0;
     bool already_fetched = false;
 
     void refresh_pop_index(std::size_t num_pqs) noexcept {
@@ -63,6 +67,7 @@ class StickRandomDynamic {
 
     template <typename Context>
     std::optional<typename Context::value_type> try_pop(Context& ctx) {
+        //std::clog << results::dynamic_stickiness;
         if (!already_fetched) {
             results::dynamic_stickiness = ctx.config().stickiness;
             already_fetched = true;
@@ -93,29 +98,33 @@ class StickRandomDynamic {
                 guard.popped();
                 guard.unlock();
                 --count_;
-                lock_acquisition -= ctx.config().decrement;
-                if (lock_acquisition <= ctx.config().lower_threshhold) {
+                ++lock_success_count_;                
+                lock_balance -= ctx.config().decrement;
+
+                // "reverse thresholds" if confusing
+                if (lock_balance <= ctx.config().lower_threshhold) {
                     if (results::dynamic_stickiness > 1) {
                         results::dynamic_stickiness /= 2;
                     }
-                    lock_acquisition = 0;
+                    lock_balance = 0;
                 }
                 return v;
             }
             else { //lock fail
                 ++results::lock_fails;
-                ++lock_fail_count;
-                if(lock_fail_count > results::max_contention){
-                    results::max_contention = lock_fail_count;
+                ++lock_fail_count_;
+                if(lock_fail_count_ > results::max_contention){
+                    results::max_contention = lock_fail_count_;
                 }
-                lock_acquisition += ctx.config().increment;
-                if (lock_acquisition >= ctx.config().upper_threshhold) {
+                lock_balance += ctx.config().increment;
+                if (lock_balance >= ctx.config().upper_threshhold) {
                     results::dynamic_stickiness *= 2;
-                    lock_acquisition = 0;
+                    lock_balance = 0;
                 }
             }
             refresh_pop_index(ctx.num_pqs());
             count_ = results::dynamic_stickiness;
+            results::fail_rate = lock_success_count_ / (lock_fail_count_ + lock_success_count_);        
         }
     }
 
@@ -137,29 +146,31 @@ class StickRandomDynamic {
                 guard.pushed();
                 guard.unlock();
                 --count_;
-                lock_acquisition -= ctx.config().decrement;
-                if (lock_acquisition <= ctx.config().lower_threshhold) {
+                ++lock_success_count_;
+                lock_balance -= ctx.config().decrement;
+                if (lock_balance <= ctx.config().lower_threshhold) {
                     if (results::dynamic_stickiness > 1) {
                         results::dynamic_stickiness /= 2;
                     }
-                    lock_acquisition = 0;
+                    lock_balance = 0;
                 }
                 return;
             }
             else { //lock fail
                 ++results::lock_fails;
-                ++lock_fail_count;
-                if(lock_fail_count > results::max_contention){
-                    results::max_contention = lock_fail_count;
+                ++lock_fail_count_;
+                if(lock_fail_count_ > results::max_contention){
+                    results::max_contention = lock_fail_count_;
                 }
-                lock_acquisition += ctx.config().increment;
-                if (lock_acquisition >= ctx.config().upper_threshhold) {
+                lock_balance += ctx.config().increment;
+                if (lock_balance >= ctx.config().upper_threshhold) {
                     results::dynamic_stickiness *= 2;
-                    lock_acquisition = 0;
+                    lock_balance = 0;
                 }
             }
             refresh_pop_index(ctx.num_pqs());
             count_ = results::dynamic_stickiness;
+            results::fail_rate = lock_success_count_ / (lock_fail_count_ + lock_success_count_);        
         }
     }
 };

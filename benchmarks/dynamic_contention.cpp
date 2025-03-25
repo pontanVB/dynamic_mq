@@ -353,8 +353,10 @@ struct ThreadData {
     struct DynamicLog {
         std::chrono::high_resolution_clock::time_point tick;
         int stickiness;
-        int active_threads;
-        int total_iterations; // For throughput measurement, might tweak.
+        int thread_id;
+        long long total_iterations; // For throughput measurement, might tweak.
+        double fail_rate;
+        
     };
     std::vector<PushLog> pushes;
     std::vector<PopLog> pops;
@@ -409,7 +411,7 @@ void write_log(std::vector<ThreadData> const& thread_data, std::ostream& out) {
     }
     std::sort(pushes.begin(), pushes.end(), [](auto const& lhs, auto const& rhs) { return lhs.tick < rhs.tick; });
 
-
+    // Suboptimal sizing?
     value_type max_value = 0;
     for (const auto& push : pushes) {
         max_value = std::max(max_value, push.element.second);
@@ -442,9 +444,15 @@ void write_log_metrics(std::vector<ThreadData> const& thread_data, std::ostream&
     for (auto const& e : thread_data) {
         metrics.insert(metrics.end(), e.metrics.begin(), e.metrics.end());
     }
+    std::sort(metrics.begin(), metrics.end(), [](auto const& lhs, auto const& rhs) { return lhs.tick < rhs.tick; });
+    out << "tick,stickiness,thread_id,total_iterations,lock_succes_rate\n";
     for (auto const& metric : metrics) {
-        out << metric.tick.time_since_epoch().count() << ',' << metric.stickiness << ',' 
-            << metric.active_threads << ',' << metric.total_iterations << '\n';
+        out << metric.tick.time_since_epoch().count() << ',' 
+            << metric.stickiness << ',' 
+            << metric.thread_id << ',' 
+            << metric.total_iterations << ','
+            << metric.fail_rate
+            << '\n';
     }
 }
 #endif
@@ -504,7 +512,7 @@ class Context : public thread_coordination::Context {
         handle_.push(e);
         auto tick = std::chrono::high_resolution_clock::now();
         thread_data_.pushes.push_back({tick, e});
-        thread_data_.metrics.push_back({tick, results::dynamic_stickiness, settings_->thread_intervals.front().first, 0});
+        //thread_data_.metrics.push_back({tick, results::dynamic_stickiness, this->id(), 0});
     }
 
     auto try_pop() {
@@ -513,7 +521,7 @@ class Context : public thread_coordination::Context {
         if (retval) {
             thread_data_.pops.push_back({tick, retval->second});
         }
-        thread_data_.metrics.push_back({tick, results::dynamic_stickiness, settings_->thread_intervals.front().first, 0});
+        thread_data_.metrics.push_back({tick, results::dynamic_stickiness, this->id(), this->thread_data_.iter_count, results::fail_rate});
         return retval;
     }
 #else
