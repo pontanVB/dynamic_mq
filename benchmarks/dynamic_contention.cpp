@@ -44,6 +44,8 @@ using value_type = unsigned long;
 using pq_type = PQ<true, key_type, value_type>;
 using handle_type = pq_type::handle_type;
 
+// TODO - Change settings into file format?
+
 struct Settings {
     int num_threads = 50;
     long long prefill_per_thread = 1 << 20;
@@ -58,7 +60,7 @@ struct Settings {
     int timeout_s = 12;
     int sleep_us = 0;
     std::deque<std::pair<int,std::chrono::seconds>> thread_intervals;
-    std::filesystem::path interval_file = "benchmarks/util/thread_intervals.txt";
+    std::filesystem::path interval_file = "thread_intervals.txt";
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
     std::filesystem::path log_file_metrics = "metrics_log.txt";
