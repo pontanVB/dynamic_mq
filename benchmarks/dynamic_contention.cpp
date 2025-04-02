@@ -45,7 +45,7 @@ using pq_type = PQ<true, key_type, value_type>;
 using handle_type = pq_type::handle_type;
 
 struct Settings {
-    int num_threads = 4;
+    int num_threads = 50;
     long long prefill_per_thread = 1 << 20;
     long long iterations_per_thread = 1 << 24;
     key_type min_prefill = 1;
@@ -126,6 +126,10 @@ void register_cmd_options(Settings& settings, cxxopts::Options& cmd) {
 }
 
 bool validate_settings(Settings const& settings) {
+    if (!std::filesystem::exists(settings.interval_file)){
+        std::cerr << "Error: The thread_intervals file does not exist\n";
+        return false;
+    }
     if (settings.num_threads <= 0) {
         std::cerr << "Error: Number of threads must be greater than 0\n";
         return false;
