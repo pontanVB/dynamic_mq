@@ -59,7 +59,7 @@ def smooth_values(values, window_size, window_step):
 
 # TODO - Split into separate make_plot and process_files functions
 
-def process_files(env_path):
+def process_files(env_path, window_size):
     """Function to process the input files using pandas."""
 
     metrics_log_file = os.path.join(env_path, "metrics_log.txt")
@@ -104,21 +104,22 @@ def process_files(env_path):
 
 
 
-    val = int(len(rank_error_df)/1000)
-    smooth_errors, smooth_indexes = smooth_values(rank_error_df['rank_error'], val, val)
+    val = int(len(rank_error_df)/window_size)
+    smooth_errors, smooth_indexes_er = smooth_values(rank_error_df['rank_error'], val, val)
+    smooth_stickiness, smooth_indexes_st = smooth_values(data_df['stickiness'], val, val)
 
     # Create the plots
     fig, axs = plt.subplots(5, 1, figsize=(10, 12))
 
     # First subplot: Stickiness over iterations
-    axs[0].plot(data_df['pops'], data_df['stickiness'], '-', linewidth=2)
+    axs[0].plot(smooth_indexes_st, smooth_stickiness, '-', linewidth=2)
     axs[0].set_xlabel('Iteration')
     axs[0].set_ylabel('Stickiness')
     axs[0].set_title('Plot of Stickiness over Iterations')
     axs[0].grid(True, linestyle='--', alpha=0.7)
 
     # Second subplot: Rank error over iterations
-    axs[1].plot(smooth_indexes, smooth_errors, '-', linewidth=2, color='red')
+    axs[1].plot(smooth_indexes_er, smooth_errors, '-', linewidth=2, color='red')
     axs[1].set_xlabel('Iteration')
     axs[1].set_ylabel('Rank Error')
     axs[1].set_title('Plot of Rank Error over Time')
@@ -166,12 +167,13 @@ def process_files(env_path):
 def main():
     """Main function to handle argument parsing and execution."""
     parser = argparse.ArgumentParser(description="Process metrics and rank error files.")
-    parser.add_argument('--env', type=str, required=True, help="Path to the testing environment.")
+    parser.add_argument('-p', type=str, required=True, help="Path to the testing environment.")
+    parser.add_argument('-w', type=str, required=True, help="Window size.")
     
     args = parser.parse_args()
     
     # Call processing function with arguments
-    process_files(args.env)
+    process_files(args.p, args.w)
 
 if __name__ == "__main__":
     main()
