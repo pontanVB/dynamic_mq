@@ -156,6 +156,9 @@ def process_files(env_path, window_size):
     os.makedirs(plot_dir, exist_ok=True)
     plot_path = os.path.join(plot_dir, f"{date}.png")
 
+    print(f"saved plot to:{date}.png")
+
+
     # Adjust layout and save
     plt.tight_layout()
     plt.savefig(plot_path)
@@ -168,7 +171,7 @@ def main():
     """Main function to handle argument parsing and execution."""
     parser = argparse.ArgumentParser(description="Process metrics and rank error files.")
     parser.add_argument('-p', type=str, required=True, help="Path to the testing environment.")
-    parser.add_argument('-w', type=str, required=True, help="Window size.")
+    parser.add_argument('-w', type=int, required=True, help="Window size.")
     
     args = parser.parse_args()
     
