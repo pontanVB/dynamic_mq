@@ -11,13 +11,6 @@ from datetime import datetime
  # TODO 
  # CSV handiling / conversion! - Done
 
-# FILES
-
-# Use a relative path directly
-file_path = '../metrics_log.txt'
-
-rank_error_path = '../metrics.txt'
-
 
 
 def smooth_values(values, window_size, window_step):
@@ -64,6 +57,7 @@ def process_files(env_path, window_size):
 
     metrics_log_file = os.path.join(env_path, "metrics_log.txt")
     rank_error_file = os.path.join(env_path, "metrics.txt")
+
     
     # Load metrics log file
     if os.path.exists(metrics_log_file):
@@ -80,9 +74,9 @@ def process_files(env_path, window_size):
     else:
         print(f"Error: Rank error file not found: {rank_error_file}")
         return
-    
-    # Example processing
-    data_df = pd.read_csv(file_path)
+
+    print(data_df.columns)
+
 
     # Adding new fields
     data_df['time'] = data_df['tick'] - data_df['tick'].iat[0]
@@ -107,15 +101,16 @@ def process_files(env_path, window_size):
     val = int(len(rank_error_df)/window_size)
     smooth_errors, smooth_indexes_er = smooth_values(rank_error_df['rank_error'], val, val)
     smooth_stickiness, smooth_indexes_st = smooth_values(data_df['stickiness'], val, val)
+    smooth_iter, smooth_iter_st = smooth_values(data_df['total_iterations'], val, val)
 
     # Create the plots
-    fig, axs = plt.subplots(5, 1, figsize=(10, 12))
+    fig, axs = plt.subplots(4, 1, figsize=(10, 12))
 
     # First subplot: Stickiness over iterations
     axs[0].plot(smooth_indexes_st, smooth_stickiness, '-', linewidth=2)
     axs[0].set_xlabel('Iteration')
     axs[0].set_ylabel('Stickiness')
-    axs[0].set_title('Plot of Stickiness over Iterations')
+    axs[0].set_title('Plot of Thread Average Stickiness over Iterations')
     axs[0].grid(True, linestyle='--', alpha=0.7)
 
     # Second subplot: Rank error over iterations
@@ -130,21 +125,40 @@ def process_files(env_path, window_size):
 
 
 
-    # Define the time window size
-    time_window = 100000  # Example: Group every 5000 time units
+    # # Define the time window size
+    # time_window = 100000  # Example: Group every 5000 time units
 
-    # Create bins based on time
-    data_df['time_bin'] = (data_df['time'] // time_window) * time_window
+    # # Create bins based on time
+    # data_df['time_bin'] = (data_df['time'] // time_window) * time_window
 
-    # Group by time bins and sum 'pops'
-    df_windowed = data_df.groupby(['time_bin'])['pops'].sum().reset_index()
+    # # Group by time bins and sum 'pops'
+    # df_windowed = data_df.groupby(['time_bin'])['pops'].sum().reset_index()
 
-    # Third subplot: Averaged performace per thread over iterations
-    axs[2].plot(df_windowed['time_bin'], df_windowed['pops'], '-', linewidth=2, color='red')
-    plt.xlabel(f"Time Window ({time_window} units)")
-    axs[2].set_ylabel('Total Pops')
-    axs[2].set_title('Pops over time')
+    # # Third subplot: Averaged performace per thread over iterations
+    # axs[2].plot(df_windowed['time_bin'], df_windowed['pops'], '-', linewidth=2, color='red')
+    # plt.xlabel(f"Time Window ({time_window} units)")
+    # axs[2].set_ylabel('Total Pops')
+    # axs[2].set_title('Pops over time')
+    # axs[2].grid(True, linestyle='--', alpha=0.7)
+
+        # Second subplot: Rank error over iterations
+    axs[2].plot(smooth_iter_st, smooth_iter, '-', linewidth=2, color='red')
+    axs[2].set_xlabel('Iteration')
+    axs[2].set_ylabel('Total Iterations')
+    axs[2].set_title('Plot of Total Iterations Error over Iterations')
     axs[2].grid(True, linestyle='--', alpha=0.7)
+
+    axs[2].text(0.8, 0.5, f"window size:{window_size}", 
+        transform=axs[2].transAxes,
+        fontsize=12,
+        verticalalignment='top',
+        horizontalalignment='left')
+    
+    axs[3].plot(data_df['pops'], data_df['active_threads'], '-', linewidth=2, color='red')
+    axs[3].set_xlabel('Iteration')
+    axs[3].set_ylabel('Active Threads')
+    axs[3].set_title('Plot of Active Threads over Iterations')
+    axs[3].grid(True, linestyle='--', alpha=0.7)
 
 
 

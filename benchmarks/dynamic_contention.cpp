@@ -2,6 +2,8 @@
 #include "util/selector.hpp"
 #include "util/thread_coordination.hpp"
 
+//#define LOG_OPERATIONS
+
 #ifdef LOG_OPERATIONS
 #include "util/operation_log.hpp"
 #endif
@@ -47,7 +49,7 @@ using handle_type = pq_type::handle_type;
 // TODO - Change settings into file format?
 
 struct Settings {
-    int num_threads = 50;
+    int num_threads = 10;
     long long prefill_per_thread = 1 << 20;
     long long iterations_per_thread = 1 << 24;
     key_type min_prefill = 1;
@@ -336,6 +338,9 @@ struct ThreadData {
     long long iter_count = 0;
     long long failed_pop_count = 0;
 
+    std::deque<std::pair<int,std::chrono::seconds>> thread_intervals;
+
+
     //Interval data (There's probably a more convenient way to do this)
     std::vector<std::pair<int,int>> fail_data;
     std::vector<int> interval_fails = {};
@@ -361,6 +366,7 @@ struct ThreadData {
         int thread_id;
         long long total_iterations; // For throughput measurement, might tweak.
         double fail_rate;
+        int active_threads;
         
     };
     std::vector<PushLog> pushes;
@@ -450,13 +456,14 @@ void write_log_metrics(std::vector<ThreadData> const& thread_data, std::ostream&
         metrics.insert(metrics.end(), e.metrics.begin(), e.metrics.end());
     }
     std::sort(metrics.begin(), metrics.end(), [](auto const& lhs, auto const& rhs) { return lhs.tick < rhs.tick; });
-    out << "tick,stickiness,thread_id,total_iterations,lock_succes_rate\n";
+    out << "tick,stickiness,thread_id,total_iterations,lock_succes_rate,active_threads\n";
     for (auto const& metric : metrics) {
         out << metric.tick.time_since_epoch().count() << ',' 
             << metric.stickiness << ',' 
             << metric.thread_id << ',' 
             << metric.total_iterations << ','
-            << metric.fail_rate
+            << metric.fail_rate << ','
+            << metric.active_threads
             << '\n';
     }
 }
@@ -526,7 +533,7 @@ class Context : public thread_coordination::Context {
         if (retval) {
             thread_data_.pops.push_back({tick, retval->second});
         }
-        thread_data_.metrics.push_back({tick, results::dynamic_stickiness, this->id(), this->thread_data_.iter_count, results::fail_rate});
+        thread_data_.metrics.push_back({tick, results::dynamic_stickiness, this->id(), this->thread_data_.iter_count, results::fail_rate, this->thread_data_.thread_intervals.front().first});
         return retval;
     }
 #else
@@ -596,7 +603,10 @@ bool process_intervals(Context& context,
 [[gnu::noinline]] void work_loop(Context& context) {
     auto offset = static_cast<value_type>(context.settings().num_threads * context.settings().prefill_per_thread);
     long long max = context.settings().iterations_per_thread * context.settings().num_threads;
-    auto thread_intervals = context.settings().thread_intervals;
+
+    context.thread_data().thread_intervals = context.settings().thread_intervals;
+
+    auto& thread_intervals = context.thread_data().thread_intervals;
     std::deque<std::chrono::high_resolution_clock::time_point> interval_times;
     std::chrono::high_resolution_clock::time_point interval_end = context.shared_data().start_time;
     // Make timeout a time point.
