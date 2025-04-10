@@ -49,7 +49,7 @@ using handle_type = pq_type::handle_type;
 // TODO - Change settings into file format?
 
 struct Settings {
-    int num_threads = 10;
+    int num_threads = 50;
     long long prefill_per_thread = 1 << 20;
     long long iterations_per_thread = 1 << 24;
     key_type min_prefill = 1;
