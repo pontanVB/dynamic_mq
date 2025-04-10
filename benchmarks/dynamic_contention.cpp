@@ -59,7 +59,7 @@ struct Settings {
     long long batch_size = 1 << 12;
     int seed = 1;
     int affinity = 6;
-    int timeout_s = 12;
+    int timeout_s = 0;
     int sleep_us = 0;
     std::deque<std::pair<int,std::chrono::seconds>> thread_intervals;
     std::filesystem::path interval_file = "thread_intervals.txt";
