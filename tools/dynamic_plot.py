@@ -172,7 +172,7 @@ def main():
     args = parser.parse_args()
     
     # Call processing function with arguments
-    process_files(args.m, args.l, args.p, args.w)
+    process_files(args.r, args.l, args.p, args.w)
 
 if __name__ == "__main__":
     main()
