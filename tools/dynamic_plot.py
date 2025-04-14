@@ -52,27 +52,23 @@ def smooth_values(values, window_size, window_step):
 
 # TODO - Split into separate make_plot and process_files functions
 
-def process_files(env_path, window_size):
+def process_files(log_file, rank_file, plot_path, window_size):
     """Function to process the input files using pandas."""
-
-    metrics_log_file = os.path.join(env_path, "metrics_log.txt")
-    rank_error_file = os.path.join(env_path, "metrics.txt")
-
     
     # Load metrics log file
-    if os.path.exists(metrics_log_file):
-        data_df = pd.read_csv(metrics_log_file)
-        print(f"Loaded metrics log file: {metrics_log_file}")
+    if os.path.exists(log_file):
+        data_df = pd.read_csv(log_file)
+        print(f"Loaded metrics log file: {log_file}")
     else:
-        print(f"Error: Metrics log file not found: {metrics_log_file}")
+        print(f"Error: Metrics log file not found: {log_file}")
         return
     
     # Load rank error file
-    if os.path.exists(rank_error_file):
-        rank_error_df = pd.read_csv(rank_error_file)
-        print(f"Loaded rank error file: {rank_error_file}")
+    if os.path.exists(rank_file):
+        rank_error_df = pd.read_csv(rank_file)
+        print(f"Loaded rank error file: {rank_file}")
     else:
-        print(f"Error: Rank error file not found: {rank_error_file}")
+        print(f"Error: Rank error file not found: {rank_file}")
         return
 
     print(data_df.columns)
@@ -123,25 +119,7 @@ def process_files(env_path, window_size):
 
 
 
-
-
-    # # Define the time window size
-    # time_window = 100000  # Example: Group every 5000 time units
-
-    # # Create bins based on time
-    # data_df['time_bin'] = (data_df['time'] // time_window) * time_window
-
-    # # Group by time bins and sum 'pops'
-    # df_windowed = data_df.groupby(['time_bin'])['pops'].sum().reset_index()
-
-    # # Third subplot: Averaged performace per thread over iterations
-    # axs[2].plot(df_windowed['time_bin'], df_windowed['pops'], '-', linewidth=2, color='red')
-    # plt.xlabel(f"Time Window ({time_window} units)")
-    # axs[2].set_ylabel('Total Pops')
-    # axs[2].set_title('Pops over time')
-    # axs[2].grid(True, linestyle='--', alpha=0.7)
-
-        # Second subplot: Rank error over iterations
+    # Second subplot: Rank error over iterations
     axs[2].plot(smooth_iter_st, smooth_iter, '-', linewidth=2, color='red')
     axs[2].set_xlabel('Iteration')
     axs[2].set_ylabel('Total Iterations')
@@ -154,6 +132,8 @@ def process_files(env_path, window_size):
         verticalalignment='top',
         horizontalalignment='left')
     
+
+    # Troughput plot
     axs[3].plot(data_df['pops'], data_df['active_threads'], '-', linewidth=2, color='red')
     axs[3].set_xlabel('Iteration')
     axs[3].set_ylabel('Active Threads')
@@ -166,7 +146,7 @@ def process_files(env_path, window_size):
     date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") 
 
     # Save plot inside env_path/plots/date.png
-    plot_dir = os.path.join(env_path, "plots")
+    plot_dir = os.path.join(plot_dir, "plots")
     os.makedirs(plot_dir, exist_ok=True)
     plot_path = os.path.join(plot_dir, f"{date}.png")
 
@@ -184,13 +164,15 @@ def process_files(env_path, window_size):
 def main():
     """Main function to handle argument parsing and execution."""
     parser = argparse.ArgumentParser(description="Process metrics and rank error files.")
-    parser.add_argument('-p', type=str, required=True, help="Path to the testing environment.")
+    parser.add_argument('-r', type=str, required=True, help="Path to the rank error file.")
+    parser.add_argument('-l', type=str, required=True, help="Path to the dynamic logging.")
+    parser.add_argument('-p', type=str, required=True, help="Path to the plots.")
     parser.add_argument('-w', type=int, required=True, help="Window size.")
     
     args = parser.parse_args()
     
     # Call processing function with arguments
-    process_files(args.p, args.w)
+    process_files(args.m, args.l, args.p, args.w)
 
 if __name__ == "__main__":
     main()
