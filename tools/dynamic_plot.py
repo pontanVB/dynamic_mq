@@ -49,96 +49,197 @@ def smooth_values(values, window_size, window_step):
 
     return smoothed_vals, smoothed_inds
 
+from collections import deque
+
+def throughput_calc(data_df, window_size, window_step):
+    """
+    Calculates throughput over non-overlapping or step-wise overlapping windows.
+
+    Parameters:
+    - data_df: DataFrame with 'total_iterations' and 'time'.
+    - window_size: Number of data points in each window.
+    - window_step: Step size to move the window.
+
+    Returns:
+    - throughput_vals: List of computed throughput values.
+    - time_vals: Corresponding center time index for each throughput value.
+    """
+
+    throughput_vals = []
+    time_vals = []
+    throughput_inds = []
+    i = 0
+
+    while i + window_size <= len(data_df):
+        times = data_df['time'].iloc[i:i+window_size]
+
+        time_diff = times.iloc[-1] - times.iloc[0]
+        iter_sum = window_size
+
+        throughput = iter_sum / time_diff if time_diff != 0 else 0
+        throughput_vals.append(throughput)
+        time_vals.append(times.iloc[window_size // 2])
+        throughput_inds.append(i + window_size//2)
+
+        i += window_step
+
+    return throughput_vals, time_vals, throughput_inds
+
+def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue', smoothing=False, window_size=1, window_step=1):
+    x_vals = []
+    y_vals = []
+
+    if (smoothing and y_col in df.columns):
+        smooth_y, smooth_x_inds = smooth_values(df[y_col], window_size, window_step)
+        y_vals = smooth_y
+        x_vals = smooth_x_inds
+        print("smoothing")
+
+    elif {x_col, y_col}.issubset(df.columns):
+        x_vals = df[x_col]
+        y_vals = df[y_col]
+
+    elif not (y_col in df.columns):
+        print(f"Column {y_col} is missing from {df.columns}")
+        return False
+    else:
+        print(f"Column {x_col} is missing from {df.columns}")
+        return False
+        
+    ax.plot(x_vals, y_vals, '-', linewidth=2, color=color)
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, linestyle='--', alpha=0.7)
+
+    return True
+
+
+
 
 # TODO - Split into separate make_plot and process_files functions
 
-def process_files(log_file, rank_file, plot_path, window_size):
+def process_files(log_file, rank_file, env_path, window_size):
     """Function to process the input files using pandas."""
-    
-    # Load metrics log file
-    if os.path.exists(log_file):
+
+    val = 0
+    plot_amount = 0
+
+    metrics_exist = False
+    rank_error_exist = False
+
+    # Load log files
+    # Ok to provide a dile or not. Not ok to provide invalid file
+    if log_file is None:
+        print("Dynamic Logs not provided")
+        metrics_exist = False
+    elif os.path.exists(log_file):
         data_df = pd.read_csv(log_file)
         print(f"Loaded metrics log file: {log_file}")
+        metrics_exist = True
     else:
-        print(f"Error: Metrics log file not found: {log_file}")
+        print(f"Metrics log file not found: {log_file}")
         return
-    
-    # Load rank error file
-    if os.path.exists(rank_file):
+
+    if rank_file is None:
+        rank_error_exist = False
+        print("Rank error file not provided")
+    elif os.path.exists(rank_file):
         rank_error_df = pd.read_csv(rank_file)
         print(f"Loaded rank error file: {rank_file}")
+        rank_error_exist = True
     else:
         print(f"Error: Rank error file not found: {rank_file}")
         return
 
-    print(data_df.columns)
+    # Plot setup
 
+    specific_fields = ['tick', 'active_threads', 'stickiness', 'rank_error']
 
-    # Adding new fields
-    data_df['time'] = data_df['tick'] - data_df['tick'].iat[0]
-    data_df['pops'] = range(len(data_df))
-    data_df['thread_specific_pops'] = data_df.groupby('thread_id').cumcount() + 1
-
-    df_threads = data_df.groupby('thread_id')
-
-
-
-
-    print(f"our data len:{len(data_df)}")
-    print(f"rank error len:{len(rank_error_df)}")
-
-
-
-    # for viewing new fields 
-    data_df.to_csv('new_df.csv', index=False)
-
-
-
-    val = int(len(rank_error_df)/window_size)
-    smooth_errors, smooth_indexes_er = smooth_values(rank_error_df['rank_error'], val, val)
-    smooth_stickiness, smooth_indexes_st = smooth_values(data_df['stickiness'], val, val)
-    smooth_iter, smooth_iter_st = smooth_values(data_df['total_iterations'], val, val)
-
-    # Create the plots
-    fig, axs = plt.subplots(4, 1, figsize=(10, 12))
-
-    # First subplot: Stickiness over iterations
-    axs[0].plot(smooth_indexes_st, smooth_stickiness, '-', linewidth=2)
-    axs[0].set_xlabel('Iteration')
-    axs[0].set_ylabel('Stickiness')
-    axs[0].set_title('Plot of Thread Average Stickiness over Iterations')
-    axs[0].grid(True, linestyle='--', alpha=0.7)
-
-    # Second subplot: Rank error over iterations
-    axs[1].plot(smooth_indexes_er, smooth_errors, '-', linewidth=2, color='red')
-    axs[1].set_xlabel('Iteration')
-    axs[1].set_ylabel('Rank Error')
-    axs[1].set_title('Plot of Rank Error over Time')
-    axs[1].grid(True, linestyle='--', alpha=0.7)
-
-
-
-
-    # Second subplot: Rank error over iterations
-    axs[2].plot(smooth_iter_st, smooth_iter, '-', linewidth=2, color='red')
-    axs[2].set_xlabel('Iteration')
-    axs[2].set_ylabel('Total Iterations')
-    axs[2].set_title('Plot of Total Iterations Error over Iterations')
-    axs[2].grid(True, linestyle='--', alpha=0.7)
-
-    axs[2].text(0.8, 0.5, f"window size:{window_size}", 
-        transform=axs[2].transAxes,
-        fontsize=12,
-        verticalalignment='top',
-        horizontalalignment='left')
+    if metrics_exist:
+        for field in data_df.columns:
+            if field in specific_fields:
+                plot_amount += 1
     
+    if rank_error_exist:
+        plot_amount += 1
+            
+    fig, axs = plt.subplots(plot_amount, 1, figsize=(10, plot_amount * 4))
+    # Make axs always iterable
+    if plot_amount == 1:
+        axs = [axs]
 
-    # Troughput plot
-    axs[3].plot(data_df['pops'], data_df['active_threads'], '-', linewidth=2, color='red')
-    axs[3].set_xlabel('Iteration')
-    axs[3].set_ylabel('Active Threads')
-    axs[3].set_title('Plot of Active Threads over Iterations')
-    axs[3].grid(True, linestyle='--', alpha=0.7)
+    plot_index = 0
+
+    # Add derived columns
+    if metrics_exist:
+        data_df['time'] = data_df['tick'] - data_df['tick'].iat[0]
+        data_df['pops'] = range(len(data_df))
+        data_df['thread_specific_pops'] = data_df.groupby('thread_id').cumcount() + 1
+        print(f"our data len: {len(data_df)}")
+        val = int(len(data_df) / window_size)
+
+
+        plot_specs = [
+            ('stickiness', 'Plot of Thread Average Stickiness over Iterations', 'Stickiness', 'blue', True),
+            ('active_threads', 'Plot of Active Threads over Iterations', 'Active Threads', 'red', False),
+            # Add more tuples as needed
+        ]
+
+        for y_col, title, ylabel, color, smoothing in plot_specs:
+            if y_col in data_df.columns:
+                success = safe_plot_from_df(
+                    ax=axs[plot_index],
+                    df=data_df,
+                    x_col='pops',
+                    y_col=y_col,
+                    title=title,
+                    xlabel='Iteration',
+                    ylabel=ylabel,
+                    color=color,
+                    smoothing=smoothing,
+                    window_size=val,
+                    window_step=val
+                )
+                if success:
+                    plot_index += 1
+
+
+        # Plot 2: Throughput
+        avg_iters, avg_iters_times, avg_iters_inds = throughput_calc(data_df, val, val)
+        axs[plot_index].plot(avg_iters_inds, avg_iters, '-', linewidth=2, color='red')
+        axs[plot_index].set_title('Throughput Over Iterations')
+        axs[plot_index].set_xlabel('Iteration')
+        axs[plot_index].set_ylabel('Iterations/s')
+        axs[plot_index].grid(True, linestyle='--', alpha=0.7)
+        axs[plot_index].text(0.8, 0.5, f"window size: {window_size}",
+                    transform=axs[plot_index].transAxes,
+                    fontsize=12,
+                    verticalalignment='top',
+                    horizontalalignment='left')
+        
+        plot_index += 1
+
+
+    if rank_error_exist:
+        print(f"rank error len: {len(rank_error_df)}")
+        val = int(len(rank_error_df) / window_size)
+
+        # Plot 4: Rank Error
+        if safe_plot_from_df(
+            ax=axs[plot_index],
+            df=rank_error_df,
+            x_col='pops',  # assuming same indexing; adjust if needed
+            y_col='rank_error',
+            title='Plot of Rank Error over Iterations',
+            xlabel='Iteration',
+            ylabel='Rank Error',
+            color='red',
+            smoothing=True,
+            window_size=val,
+            window_step=val
+        ):
+            plot_index += 1
 
 
 
@@ -146,17 +247,18 @@ def process_files(log_file, rank_file, plot_path, window_size):
     date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") 
 
     # Save plot inside env_path/plots/date.png
-    plot_dir = os.path.join(plot_dir, "plots")
-    os.makedirs(plot_dir, exist_ok=True)
-    plot_path = os.path.join(plot_dir, f"{date}.png")
+    env_path = os.path.join(env_path, "plots")
+    os.makedirs(env_path, exist_ok=True)
+    plot_dir = os.path.join(env_path, f"{date}.png")
 
     print(f"saved plot to:{date}.png")
 
 
     # Adjust layout and save
     plt.tight_layout()
-    plt.savefig(plot_path)
+    plt.savefig(plot_dir)
     plt.close()
+
 
 
 
@@ -164,15 +266,15 @@ def process_files(log_file, rank_file, plot_path, window_size):
 def main():
     """Main function to handle argument parsing and execution."""
     parser = argparse.ArgumentParser(description="Process metrics and rank error files.")
-    parser.add_argument('-r', type=str, required=True, help="Path to the rank error file.")
-    parser.add_argument('-l', type=str, required=True, help="Path to the dynamic logging.")
+    parser.add_argument('-r', type=str, required=False, help="Path to the rank error file.")
+    parser.add_argument('-l', type=str, required=False, help="Path to the dynamic logging.")
     parser.add_argument('-p', type=str, required=True, help="Path to the plots.")
     parser.add_argument('-w', type=int, required=True, help="Window size.")
     
     args = parser.parse_args()
     
     # Call processing function with arguments
-    process_files(args.r, args.l, args.p, args.w)
+    process_files(args.l, args.r, args.p, args.w)
 
 if __name__ == "__main__":
     main()
