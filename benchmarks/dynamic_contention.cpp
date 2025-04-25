@@ -59,7 +59,7 @@ struct Settings {
     long long batch_size = 1 << 12;
     int seed = 1;
     int affinity = 6;
-    int timeout_s = 8;
+    int timeout_s = 0;
     int sleep_us = 0;
     std::deque<std::pair<int,std::chrono::seconds>> thread_intervals;
     std::filesystem::path interval_file = "thread_intervals.txt";
@@ -578,17 +578,55 @@ bool will_hit_timeout(std::chrono::high_resolution_clock::time_point timeout,
     return (timeout.time_since_epoch().count() != 0 && interval_end > timeout);
 }
 
+void print_interval_times(const Context& context, 
+    const std::deque<std::chrono::high_resolution_clock::time_point>& interval_times) {
+    auto current_thread_id = context.id(); // Use context.id() to get thread ID
+
+    std::clog << "Thread ID " << current_thread_id << " - interval_times: [";
+    bool first = true;
+    for (const auto& tp : interval_times) {
+        if (!first) std::clog << ", ";
+        else first = false;
+
+        // Convert time_point to milliseconds since epoch and print
+        auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count();
+        std::clog << millis << "ms";
+    }
+    std::clog << "]\n";
+}
+
+void print_thread_intervals(const Context& context, 
+    const std::deque<std::pair<int, std::chrono::seconds>>& thread_intervals) {
+    auto current_thread_id = context.id(); // Use context.id() to get thread ID
+
+    std::clog << "Thread ID " << current_thread_id << " - thread_intervals: [";
+    bool first = true;
+    for (const auto& [thread_id, duration] : thread_intervals) {
+        if (!first) std::clog << ", ";
+        else first = false;
+
+        // Convert duration to seconds and print
+        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+        std::clog << "(" << thread_id << ", " << seconds << "s)";
+    }
+    std::clog << "]\n";
+}
+
 // Process waiting during intervals and signal if work loop should be exited.
 bool process_intervals(Context& context, 
                        std::deque<std::pair<int,std::chrono::seconds>>& thread_intervals,
                        std::deque<std::chrono::high_resolution_clock::time_point>& interval_times,
                        std::chrono::high_resolution_clock::time_point& timeout) {
+    if (thread_intervals.empty()) {
+        return true;
+    }
     while (context.id() >= thread_intervals.front().first) {
         if (will_hit_timeout(timeout, interval_times.front())) {
             std::this_thread::sleep_until(timeout);
             record_interval(context);
             return true;
         }
+
         std::this_thread::sleep_until(interval_times.front());
         interval_times.pop_front();
         record_interval(context);
