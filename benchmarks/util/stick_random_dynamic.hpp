@@ -9,6 +9,9 @@
 #include <optional>
 #include <random>
 #include <iostream>
+#include <filesystem>
+#include <sstream>
+#include <fstream>
 
 
 namespace results{
@@ -28,10 +31,34 @@ class StickRandomDynamic {
     struct Config {
         int seed{1};
         int stickiness{16};
-        int increment{2}; // change names
-        int decrement{1};
-        int upper_threshhold{5};
-        int lower_threshhold{-5};
+        int punishment{1};
+        int reward{2};
+        int lower_threshold{-5};
+        int upper_threshold{5};
+        std::filesystem::path stickiness_file = "stickiness_parameters.txt";
+    
+        Config() {
+            std::ifstream file(stickiness_file);
+            std::string line;
+            int parameters[5];
+
+            if (std::getline(file, line)) {
+                std::stringstream ss(line);
+                for (int i = 0; i < 5; ++i) {
+                    std::string token;
+                    if (std::getline(ss, token, ',')) {
+                        parameters[i] = std::stoi(token);
+                    }
+                }
+            }
+            
+            stickiness      = parameters[0];
+            punishment      = parameters[1];
+            reward          = parameters[2];
+            lower_threshold = parameters[3];
+            upper_threshold = parameters[4];
+        }
+    
     };
 
     struct SharedData {
@@ -99,10 +126,9 @@ class StickRandomDynamic {
                 guard.unlock();
                 --count_;
                 ++lock_success_count_;                
-                lock_balance -= ctx.config().decrement;
+                lock_balance += ctx.config().reward;
 
-                // "reverse thresholds" if confusing
-                if (lock_balance <= ctx.config().lower_threshhold) {
+                if (lock_balance >= ctx.config().upper_threshold) {
                     if (results::dynamic_stickiness > 1) {
                         results::dynamic_stickiness /= 2;
                     }
@@ -116,8 +142,8 @@ class StickRandomDynamic {
                 if(lock_fail_count_ > results::max_contention){
                     results::max_contention = lock_fail_count_;
                 }
-                lock_balance += ctx.config().increment;
-                if (lock_balance >= ctx.config().upper_threshhold) {
+                lock_balance -= ctx.config().punishment;
+                if (lock_balance <= ctx.config().lower_threshold) {
                     results::dynamic_stickiness *= 2;
                     lock_balance = 0;
                 }
@@ -147,8 +173,8 @@ class StickRandomDynamic {
                 guard.unlock();
                 --count_;
                 ++lock_success_count_;
-                lock_balance -= ctx.config().decrement;
-                if (lock_balance <= ctx.config().lower_threshhold) {
+                lock_balance += ctx.config().reward;
+                if (lock_balance >= ctx.config().upper_threshold) {
                     if (results::dynamic_stickiness > 1) {
                         results::dynamic_stickiness /= 2;
                     }
@@ -162,8 +188,8 @@ class StickRandomDynamic {
                 if(lock_fail_count_ > results::max_contention){
                     results::max_contention = lock_fail_count_;
                 }
-                lock_balance += ctx.config().increment;
-                if (lock_balance >= ctx.config().upper_threshhold) {
+                lock_balance -= ctx.config().punishment;
+                if (lock_balance <= ctx.config().lower_threshold) {
                     results::dynamic_stickiness *= 2;
                     lock_balance = 0;
                 }
