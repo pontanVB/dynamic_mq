@@ -673,6 +673,10 @@ bool process_intervals(Context& context,
         auto to = std::min(from + context.settings().batch_size, max);
         // Loop through batch of work.
         for (auto i = from; i < to; ++i) {
+            if (i >= max) {
+                std::cerr << 'Error: No more iterations';
+            }
+
             while (true) {
                 if (auto e = context.try_pop(); e) {
                     if (context.settings().sleep_us != 0) {
