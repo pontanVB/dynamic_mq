@@ -15,39 +15,45 @@ from datetime import datetime
 
 def smooth_values(values, window_size, window_step):
     """
-    Smooths a list of values.
-
+    Smooths a list of values and calculates the 25th, 50th, and 75th percentiles.
+    
     Parameters:
     - values: The series of values to smooth.
     - window_size: How many values to aggregate into each new data point.
-                   Increase this to get larger averages.
     - window_step: The offset between the aggregating windows.
-                   Increase to get fewer output points. Should be less or
-                   equal to window_size. 
-
+    
     Returns:
-    - smoothed_vals: The smoothed list of values. It will have a length of 
-                     approximately len(values)/window_step.    
-    - smoothed_inds: The list of original indexes corresponding to the
-                     smoothed values.
+    - smoothed_vals: The smoothed list of values (mean).
+    - smoothed_mids_25: The smoothed list of 25th percentile values.
+    - smoothed_mids_50: The smoothed list of 50th percentile values.
+    - smoothed_mids_75: The smoothed list of 75th percentile values.
+    - smoothed_inds: The list of original indexes corresponding to the smoothed values.
     """
     window = deque()
-    window_sum = 0.0
-
     smoothed_vals = []
+    smoothed_mids_25 = []
+    smoothed_mids_50 = []
+    smoothed_mids_75 = []
     smoothed_inds = []
 
-    for (i, point) in enumerate(values):
+    for i, point in enumerate(values):
         window.append(point)
-        window_sum += point
-
+        
+        # When the window reaches the size limit
         if len(window) == window_size:
-            smoothed_vals.append(window_sum/window_size)
-            smoothed_inds.append(i + window_size//2)
-            for _ in range(window_step):
-                window_sum -= window.popleft()
+            # Calculate mean
+            smoothed_vals.append(np.mean(window))
+            # Calculate percentiles
+            smoothed_mids_25.append(np.percentile(window, 25))
+            smoothed_mids_50.append(np.percentile(window, 50))  # 50th percentile (median)
+            smoothed_mids_75.append(np.percentile(window, 75))
+            smoothed_inds.append(i + window_size // 2)
 
-    return smoothed_vals, smoothed_inds
+            # Slide the window by window_step
+            for _ in range(window_step):
+                window.popleft()
+
+    return smoothed_vals, smoothed_mids_25, smoothed_mids_50, smoothed_mids_75, smoothed_inds
 
 from collections import deque
 
@@ -90,14 +96,21 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
     y_vals = []
 
     if (smoothing and y_col in df.columns):
-        smooth_y, smooth_x_inds = smooth_values(df[y_col], window_size, window_step)
-        y_vals = smooth_y
-        x_vals = smooth_x_inds
+        smooth_vals, smooth_25, smooth_50, smooth_75, smooth_inds = smooth_values(df[y_col], window_size, window_step)
+        x_vals = smooth_inds
         print("smoothing")
+
+        # Plotting all variants
+        ax.plot(x_vals, smooth_vals, '-', linewidth=2, color='orange', label='Average')
+        ax.plot(x_vals, smooth_25, '--', linewidth=2, color='red', label='25th percentile')
+        ax.plot(x_vals, smooth_50, '--', linewidth=2, color='blue', label='50th percentile (Median)')
+        ax.plot(x_vals, smooth_75, '--', linewidth=2, color='green', label='75th percentile')
+
 
     elif {x_col, y_col}.issubset(df.columns):
         x_vals = df[x_col]
         y_vals = df[y_col]
+        ax.plot(x_vals, y_vals, '-', linewidth=2, color=color, label=y_col)
 
     elif not (y_col in df.columns):
         print(f"Column {y_col} is missing from {df.columns}")
@@ -106,11 +119,11 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
         print(f"Column {x_col} is missing from {df.columns}")
         return False
         
-    ax.plot(x_vals, y_vals, '-', linewidth=2, color=color)
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.grid(True, linestyle='--', alpha=0.7)
+    ax.legend(loc='upper left')
 
     return True
 
@@ -173,7 +186,8 @@ def process_files(log_file, rank_file, env_path, window_size):
 
     # Add derived columns
     if metrics_exist:
-        data_df['time'] = data_df['tick'] - data_df['tick'].iat[0]
+        data_df['time'] = (data_df['tick'] - data_df['tick'].iat[0]) / 1e9
+        
         data_df['pops'] = range(len(data_df))
         data_df['thread_specific_pops'] = data_df.groupby('thread_id').cumcount() + 1
         print(f"our data len: {len(data_df)}")
@@ -182,7 +196,7 @@ def process_files(log_file, rank_file, env_path, window_size):
 
         plot_specs = [
             ('stickiness', 'Plot of Thread Average Stickiness over Iterations', 'Stickiness', 'blue', True),
-            ('active_threads', 'Plot of Active Threads over Iterations', 'Active Threads', 'red', False),
+            ('active_threads', 'Plot of Active Threads over Iterations', 'Active Threads', 'deepskyblue', False),
             # Add more tuples as needed
         ]
 
@@ -207,7 +221,7 @@ def process_files(log_file, rank_file, env_path, window_size):
 
         # Plot 2: Throughput
         avg_iters, avg_iters_times, avg_iters_inds = throughput_calc(data_df, val, val)
-        axs[plot_index].plot(avg_iters_inds, avg_iters, '-', linewidth=2, color='red')
+        axs[plot_index].plot(avg_iters_inds, avg_iters, '-', linewidth=2, color='green')
         axs[plot_index].set_title('Throughput Over Iterations')
         axs[plot_index].set_xlabel('Iteration')
         axs[plot_index].set_ylabel('Iterations/s')
@@ -242,22 +256,25 @@ def process_files(log_file, rank_file, env_path, window_size):
             plot_index += 1
 
 
+        # Figure config
+        
+        # fig.legend(handles='asd', labels= 'asd',loc='outside right upper', bbox_to_anchor=(0.5, -0.05), ncol=4, frameon=False)
 
-    # Date
-    date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") 
+        # Date
+        date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") 
 
-    # Save plot inside env_path/plots/date.png
-    env_path = os.path.join(env_path, "plots")
-    os.makedirs(env_path, exist_ok=True)
-    plot_dir = os.path.join(env_path, f"{date}.png")
+        # Save plot inside env_path/plots/date.png
+        env_path = os.path.join(env_path, "plots")
+        os.makedirs(env_path, exist_ok=True)
+        plot_dir = os.path.join(env_path, f"{date}.png")
 
-    print(f"saved plot to:{date}.png")
+        print(f"saved plot to:{date}.png")
 
+        # Final adjustments and save
+        plt.tight_layout()
 
-    # Adjust layout and save
-    plt.tight_layout()
-    plt.savefig(plot_dir)
-    plt.close()
+        plt.savefig(plot_dir)
+        plt.close()
 
 
 
