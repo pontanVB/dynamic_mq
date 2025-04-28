@@ -91,7 +91,7 @@ def throughput_calc(data_df, window_size, window_step):
 
     return throughput_vals, time_vals, throughput_inds
 
-def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue', smoothing=False, window_size=1, window_step=1):
+def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue', smoothing=False, window_size=1, window_step=1, medians=False):
     x_vals = []
     y_vals = []
 
@@ -99,12 +99,13 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
         smooth_vals, smooth_25, smooth_50, smooth_75, smooth_inds = smooth_values(df[y_col], window_size, window_step)
         x_vals = smooth_inds
         print("smoothing")
-
-        # Plotting all variants
         ax.plot(x_vals, smooth_vals, '-', linewidth=2, color='orange', label='Average')
-        ax.plot(x_vals, smooth_25, '--', linewidth=2, color='red', label='25th percentile')
-        ax.plot(x_vals, smooth_50, '--', linewidth=2, color='blue', label='50th percentile (Median)')
-        ax.plot(x_vals, smooth_75, '--', linewidth=2, color='green', label='75th percentile')
+
+        if medians:
+            # Plotting all variants
+            ax.plot(x_vals, smooth_25, '--', linewidth=2, color='red', label='25th percentile')
+            ax.plot(x_vals, smooth_50, '--', linewidth=2, color='blue', label='50th percentile (Median)')
+            ax.plot(x_vals, smooth_75, '--', linewidth=2, color='green', label='75th percentile')
 
 
     elif {x_col, y_col}.issubset(df.columns):
@@ -167,7 +168,7 @@ def process_files(log_file, rank_file, env_path, window_size):
 
     # Plot setup
 
-    specific_fields = ['tick', 'active_threads', 'stickiness', 'rank_error']
+    specific_fields = ['tick', 'active_threads', 'stickiness', 'rank_error','lock_succes_rate']
 
     if metrics_exist:
         for field in data_df.columns:
@@ -195,12 +196,13 @@ def process_files(log_file, rank_file, env_path, window_size):
 
 
         plot_specs = [
-            ('stickiness', 'Plot of Thread Average Stickiness over Iterations', 'Stickiness', 'blue', True),
-            ('active_threads', 'Plot of Active Threads over Iterations', 'Active Threads', 'deepskyblue', False),
+            ('stickiness', 'Plot of Thread Average Stickiness over Iterations', 'Stickiness', 'blue', True, True),
+            ('active_threads', 'Plot of Active Threads over Iterations', 'Active Threads', 'deepskyblue', False, False),
+            ('lock_succes_rate', 'Lock sucess rate over iterations', 'Sucess Rate', 'lime', True, False),
             # Add more tuples as needed
         ]
 
-        for y_col, title, ylabel, color, smoothing in plot_specs:
+        for y_col, title, ylabel, color, smoothing, medians in plot_specs:
             if y_col in data_df.columns:
                 success = safe_plot_from_df(
                     ax=axs[plot_index],
@@ -213,7 +215,8 @@ def process_files(log_file, rank_file, env_path, window_size):
                     color=color,
                     smoothing=smoothing,
                     window_size=val,
-                    window_step=val
+                    window_step=val,
+                    medians=medians
                 )
                 if success:
                     plot_index += 1
@@ -251,7 +254,8 @@ def process_files(log_file, rank_file, env_path, window_size):
             color='red',
             smoothing=True,
             window_size=val,
-            window_step=val
+            window_step=val,
+            medians=True
         ):
             plot_index += 1
 
