@@ -31,7 +31,7 @@ class StickRandomDynamic {
     struct Config {
         int seed{1};
         int stickiness{16};
-        int punishment{1};
+        int punishment{-1};
         int reward{2};
         int lower_threshold{-5};
         int upper_threshold{5};
@@ -142,7 +142,7 @@ class StickRandomDynamic {
                 if(lock_fail_count_ > results::max_contention){
                     results::max_contention = lock_fail_count_;
                 }
-                lock_balance -= ctx.config().punishment;
+                lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
                     results::dynamic_stickiness *= 2;
                     lock_balance = 0;
@@ -188,7 +188,7 @@ class StickRandomDynamic {
                 if(lock_fail_count_ > results::max_contention){
                     results::max_contention = lock_fail_count_;
                 }
-                lock_balance -= ctx.config().punishment;
+                lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
                     results::dynamic_stickiness *= 2;
                     lock_balance = 0;
