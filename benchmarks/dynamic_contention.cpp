@@ -674,7 +674,8 @@ bool process_intervals(Context& context,
         // Loop through batch of work.
         for (auto i = from; i < to; ++i) {
             if (i >= max) {
-                std::cerr << 'Error: No more iterations';
+                std::cerr << "Error: No more iterations";
+                return;
             }
 
             while (true) {
