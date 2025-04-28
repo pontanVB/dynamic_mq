@@ -137,7 +137,7 @@ target_include_directories(
          ${KLSM_DIR}/lib/spraylist_linden/include)
 set_property(TARGET linden PROPERTY pq_name linden)
 target_compile_definitions(linden INTERFACE PQ_LINDEN)
-target_link_libraries(linden PRIVATE GSL::gsl)
+target_link_libraries(linden PUBLIC GSL::gsl)
 
 add_library(
   capq STATIC
@@ -154,7 +154,7 @@ target_compile_options(capq PRIVATE -w -std=gnu++17)
 target_compile_definitions(capq PUBLIC INTEL
                                        CACHE_LINE_SIZE=${L1_CACHE_LINE_SIZE})
 target_compile_definitions(capq INTERFACE PQ_CAPQ)
-target_link_libraries(capq PRIVATE GSL::gsl)
+target_link_libraries(capq PUBLIC GSL::gsl)
 
 add_library(
   spraylist
@@ -175,7 +175,7 @@ target_include_directories(
          ${KLSM_DIR}/lib/spraylist_linden/include)
 set_property(TARGET spraylist PROPERTY pq_name spraylist)
 target_compile_definitions(spraylist INTERFACE PQ_SPRAYLIST)
-target_link_libraries(spraylist PRIVATE GSL::gsl)
+target_link_libraries(spraylist PUBLIC GSL::gsl)
 
 find_package(TBB)
 
