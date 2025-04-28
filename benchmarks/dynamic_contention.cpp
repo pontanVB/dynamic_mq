@@ -61,7 +61,7 @@ struct Settings {
     int affinity = 6;
     int timeout_s = 0;
     int sleep_us = 0;
-    std::deque<std::pair<int,std::chrono::seconds>> thread_intervals;
+    std::deque<std::pair<int,std::chrono::milliseconds>> thread_intervals;
     std::filesystem::path interval_file = "thread_intervals.txt";
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
@@ -85,7 +85,7 @@ struct Settings {
             std::stringstream ss(line);
 
             if (ss >> active_threads >> comma >> duration && comma == ',') {
-                thread_intervals.emplace_back(active_threads, std::chrono::seconds(duration));
+                thread_intervals.emplace_back(active_threads, std::chrono::milliseconds(duration));
             } else {
                 std::cerr << "Wrong thread_intervals line format: " << line << std::endl;
             }
@@ -187,7 +187,7 @@ bool validate_settings(Settings const& settings) {
             std::cerr << "Error: Active threads must be at least 0\n";
             return false;
         }
-        if (e.second <= std::chrono::seconds(0)) {
+        if (e.second <= std::chrono::milliseconds(0)) {
             std::cerr << "Error: Contention interval must be greater than 0\n";
             return false;
         }
@@ -269,7 +269,7 @@ void write_settings_human_readable(Settings const& settings, std::ostream& out) 
     out << "Thread intervals (nr, time): ";
     for (size_t i = 0; i < settings.thread_intervals.size(); ++i) {
         out << "(" << settings.thread_intervals[i].first << ", " 
-            << settings.thread_intervals[i].second.count() << " s)";
+            << settings.thread_intervals[i].second.count() << " ms)";
         if (i != settings.thread_intervals.size() - 1) {
             out << ", ";
         }
@@ -338,7 +338,7 @@ struct ThreadData {
     long long iter_count = 0;
     long long failed_pop_count = 0;
 
-    std::deque<std::pair<int,std::chrono::seconds>> thread_intervals;
+    std::deque<std::pair<int,std::chrono::milliseconds>> thread_intervals;
 
 
     //Interval data (There's probably a more convenient way to do this)
@@ -596,7 +596,7 @@ void print_interval_times(const Context& context,
 }
 
 void print_thread_intervals(const Context& context, 
-    const std::deque<std::pair<int, std::chrono::seconds>>& thread_intervals) {
+    const std::deque<std::pair<int, std::chrono::milliseconds>>& thread_intervals) {
     auto current_thread_id = context.id(); // Use context.id() to get thread ID
 
     std::clog << "Thread ID " << current_thread_id << " - thread_intervals: [";
@@ -605,8 +605,8 @@ void print_thread_intervals(const Context& context,
         if (!first) std::clog << ", ";
         else first = false;
 
-        // Convert duration to seconds and print
-        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+        // Convert duration to milliseconds and print
+        auto seconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
         std::clog << "(" << thread_id << ", " << seconds << "s)";
     }
     std::clog << "]\n";
@@ -614,7 +614,7 @@ void print_thread_intervals(const Context& context,
 
 // Process waiting during intervals and signal if work loop should be exited.
 bool process_intervals(Context& context, 
-                       std::deque<std::pair<int,std::chrono::seconds>>& thread_intervals,
+                       std::deque<std::pair<int,std::chrono::milliseconds>>& thread_intervals,
                        std::deque<std::chrono::high_resolution_clock::time_point>& interval_times,
                        std::chrono::high_resolution_clock::time_point& timeout) {
     if (thread_intervals.empty()) {
@@ -653,7 +653,7 @@ bool process_intervals(Context& context,
         timeout = context.shared_data().start_time + std::chrono::seconds(context.settings().timeout_s);
     }
     // Calculate time points of interval transitions.
-    for (std::pair<int,std::chrono::seconds> interval : thread_intervals) {
+    for (std::pair<int,std::chrono::milliseconds> interval : thread_intervals) {
         interval_end += interval.second;
         interval_times.emplace_back(interval_end);
     }

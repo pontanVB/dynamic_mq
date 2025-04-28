@@ -5,3 +5,4 @@
 /tools/.venv
 .vscode
 output.json
+output/output.json
