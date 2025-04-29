@@ -179,15 +179,21 @@ class MultiQueue {
         typename multiqueue_type::config_type config{};
 
         void register_cmd_options(cxxopts::Options &cmd) {
-            cmd.add_options()("c,queue-factor", "The number of queues per thread", cxxopts::value<int>(factor),
+            cmd.add_options()("c,queue-factor", "Number of queues per thread", cxxopts::value<int>(factor),
                               "NUMBER");
             cmd.add_options()("mq-seed", "Seed for the multiqueue", cxxopts::value<int>(config.seed), "NUMBER");
             if constexpr (has_stickiness) {
-                cmd.add_options()("k,stickiness", "The stickiness period", cxxopts::value<int>(config.stickiness),
+                cmd.add_options()("k,stickiness", "Stickiness period", cxxopts::value<int>(config.stickiness),
                                   "NUMBER");
                 #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
-                    cmd.add_options()("d,dynamic-stickiness-file", "File to read stickiness parameters from", 
-                        cxxopts::value<std::filesystem::path>(config.stickiness_file), "PATH");
+                cmd.add_options()("x,punishment", "Punishment for failing a lock", 
+                                  cxxopts::value<int>(config.punishment), "NUMBER");
+                cmd.add_options()("y,reward", "Reward for claiming a lock", 
+                                  cxxopts::value<int>(config.reward), "NUMBER");
+                cmd.add_options()("lt,lower_threshold", "Lower threshold of lock balance", 
+                                  cxxopts::value<int>(config.lower_threshold), "NUMBER");
+                cmd.add_options()("ut,upper_threshold", "Upper threshold of lock balance", 
+                                  cxxopts::value<int>(config.upper_threshold), "NUMBER");
                 #endif
             }
         }

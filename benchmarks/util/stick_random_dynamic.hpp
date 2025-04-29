@@ -31,34 +31,10 @@ class StickRandomDynamic {
     struct Config {
         int seed{1};
         int stickiness{16};
-        int punishment{-1};
-        int reward{2};
-        int lower_threshold{-5};
-        int upper_threshold{5};
-        std::filesystem::path stickiness_file = "stickiness_parameters.txt";
-    
-        Config() {
-            std::ifstream file(stickiness_file);
-            std::string line;
-            int parameters[5];
-
-            if (std::getline(file, line)) {
-                std::stringstream ss(line);
-                for (int i = 0; i < 5; ++i) {
-                    std::string token;
-                    if (std::getline(ss, token, ',')) {
-                        parameters[i] = std::stoi(token);
-                    }
-                }
-            }
-            
-            stickiness      = parameters[0];
-            punishment      = parameters[1];
-            reward          = parameters[2];
-            lower_threshold = parameters[3];
-            upper_threshold = parameters[4];
-        }
-    
+        int punishment{-2};
+        int reward{1};
+        int lower_threshold{-50};
+        int upper_threshold{50};
     };
 
     struct SharedData {
@@ -94,7 +70,6 @@ class StickRandomDynamic {
 
     template <typename Context>
     std::optional<typename Context::value_type> try_pop(Context& ctx) {
-        //std::clog << results::dynamic_stickiness;
         if (!already_fetched) {
             results::dynamic_stickiness = ctx.config().stickiness;
             already_fetched = true;

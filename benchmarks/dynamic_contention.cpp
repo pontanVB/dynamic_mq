@@ -71,27 +71,27 @@ struct Settings {
     std::vector<std::string> papi_events;
 #endif
     pq_type::settings_type pq_settings;
+};
 
-    // Constructor that loads the thread_interval data.
-    Settings() {
-        std::ifstream file(interval_file);
-        std::string line;
+void read_thread_intervals(Settings& settings) {
+    std::clog << "thread_interval file: " << settings.interval_file << '\n';
+    std::ifstream file(settings.interval_file);
+    std::string line;
 
-        while (std::getline(file, line)) {
-            int active_threads;
-            int duration;
-            char comma;
+    while (std::getline(file, line)) {
+        int active_threads;
+        int duration;
+        char comma;
 
-            std::stringstream ss(line);
+        std::stringstream ss(line);
 
-            if (ss >> active_threads >> comma >> duration && comma == ',') {
-                thread_intervals.emplace_back(active_threads, std::chrono::milliseconds(duration));
-            } else {
-                std::cerr << "Wrong thread_intervals line format: " << line << std::endl;
-            }
+        if (ss >> active_threads >> comma >> duration && comma == ',') {
+            settings.thread_intervals.emplace_back(active_threads, std::chrono::milliseconds(duration));
+        } else {
+            std::cerr << "Wrong thread_intervals line format: " << line << std::endl;
         }
     }
-};
+}
 
 void register_cmd_options(Settings& settings, cxxopts::Options& cmd) {
     cmd.add_options()
@@ -815,6 +815,7 @@ void run_benchmark(Settings const& settings) {
     SharedData shared_data;
     shared_data.updates.resize(static_cast<std::size_t>(settings.iterations_per_thread * settings.num_threads));
     shared_data.thread_data.resize(static_cast<std::size_t>(settings.num_threads));
+
     auto pq =
         pq_type(settings.num_threads, static_cast<std::size_t>(settings.prefill_per_thread * settings.num_threads),
                 settings.pq_settings);
@@ -906,6 +907,8 @@ int main(int argc, char* argv[]) {
         std::cerr << "Use --help for usage information" << '\n';
         return EXIT_FAILURE;
     }
+
+    read_thread_intervals(settings);
 
     std::clog << "= Settings =\n";
     write_settings_human_readable(settings, std::clog);
