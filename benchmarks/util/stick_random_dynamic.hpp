@@ -14,13 +14,6 @@
 #include <fstream>
 
 
-namespace results{
-    inline double max_contention = 0; //temp, prob remove
-    thread_local int lock_fails = 0; //BAD NAME
-    thread_local int dynamic_stickiness = 16;
-    thread_local double fail_rate;
-}
-
 namespace multiqueue::mode {
 
 template <int num_pop_candidates = 2>
@@ -31,35 +24,15 @@ class StickRandomDynamic {
     struct Config {
         int seed{1};
         int stickiness{16};
+
         int punishment{-1};
         int reward{2};
         int lower_threshold{-5};
         int upper_threshold{5};
-        std::filesystem::path stickiness_file = "stickiness_parameters.txt";
-    
-        Config() {
-            std::ifstream file(stickiness_file);
-            std::string line;
-            int parameters[5];
 
-            if (std::getline(file, line)) {
-                std::stringstream ss(line);
-                for (int i = 0; i < 5; ++i) {
-                    std::string token;
-                    if (std::getline(ss, token, ',')) {
-                        parameters[i] = std::stoi(token);
-                    }
-                }
-            }
-            
-            stickiness      = parameters[0];
-            punishment      = parameters[1];
-            reward          = parameters[2];
-            lower_threshold = parameters[3];
-            upper_threshold = parameters[4];
-        }
-    
     };
+
+
 
     struct SharedData {
         std::atomic_int id_count{0};
@@ -71,11 +44,14 @@ class StickRandomDynamic {
    private:
     pcg32 rng_{};
     std::array<std::size_t, static_cast<std::size_t>(num_pop_candidates)> pop_index_{};
-    int count_{};
+    double count_{};
     double lock_fail_count_{};
     double lock_success_count_{};
     int lock_balance = 0;
     bool already_fetched = false;
+
+    double dynamic_stickiness{};
+    double fail_rate{};
 
     void refresh_pop_index(std::size_t num_pqs) noexcept {
         for (auto it = pop_index_.begin(); it != pop_index_.end(); ++it) {
@@ -94,14 +70,13 @@ class StickRandomDynamic {
 
     template <typename Context>
     std::optional<typename Context::value_type> try_pop(Context& ctx) {
-        //std::clog << results::dynamic_stickiness;
         if (!already_fetched) {
-            results::dynamic_stickiness = ctx.config().stickiness;
+            dynamic_stickiness = ctx.config().stickiness;
             already_fetched = true;
         }
         if (count_ == 0) {
             refresh_pop_index(ctx.num_pqs());
-            count_ = results::dynamic_stickiness;
+            count_ = dynamic_stickiness;
         }
         while (true) {
             std::size_t best = pop_index_[0];
@@ -129,40 +104,36 @@ class StickRandomDynamic {
                 lock_balance += ctx.config().reward;
 
                 if (lock_balance >= ctx.config().upper_threshold) {
-                    if (results::dynamic_stickiness > 1) {
-                        results::dynamic_stickiness /= 2;
+                    if (dynamic_stickiness > 1) {
+                        dynamic_stickiness /= 2;
                     }
                     lock_balance = 0;
                 }
                 return v;
             }
             else { //lock fail
-                ++results::lock_fails;
                 ++lock_fail_count_;
-                if(lock_fail_count_ > results::max_contention){
-                    results::max_contention = lock_fail_count_;
-                }
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
-                    results::dynamic_stickiness *= 2;
+                    dynamic_stickiness *= 2;
                     lock_balance = 0;
                 }
             }
             refresh_pop_index(ctx.num_pqs());
-            count_ = results::dynamic_stickiness;
-            results::fail_rate = lock_success_count_ / (lock_fail_count_ + lock_success_count_);        
+            count_ = dynamic_stickiness;
+            fail_rate = lock_success_count_ / (lock_fail_count_ + lock_success_count_);        
         }
     }
 
     template <typename Context>
     void push(Context& ctx, typename Context::value_type const& v) {
         if (!already_fetched) {
-            results::dynamic_stickiness = ctx.config().stickiness;
+            dynamic_stickiness = ctx.config().stickiness;
             already_fetched = true;
         }
         if (count_ == 0) {
             refresh_pop_index(ctx.num_pqs());
-            count_ = results::dynamic_stickiness;
+            count_ = dynamic_stickiness;
         }
         std::size_t push_index = rng_() % num_pop_candidates;
         while (true) {
@@ -175,30 +146,36 @@ class StickRandomDynamic {
                 ++lock_success_count_;
                 lock_balance += ctx.config().reward;
                 if (lock_balance >= ctx.config().upper_threshold) {
-                    if (results::dynamic_stickiness > 1) {
-                        results::dynamic_stickiness /= 2;
+                    if (dynamic_stickiness > 1) {
+                        dynamic_stickiness /= 2;
                     }
                     lock_balance = 0;
                 }
                 return;
             }
             else { //lock fail
-                ++results::lock_fails;
                 ++lock_fail_count_;
-                if(lock_fail_count_ > results::max_contention){
-                    results::max_contention = lock_fail_count_;
-                }
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
-                    results::dynamic_stickiness *= 2;
+                    dynamic_stickiness *= 2;
                     lock_balance = 0;
                 }
             }
             refresh_pop_index(ctx.num_pqs());
-            count_ = results::dynamic_stickiness;
-            results::fail_rate = lock_success_count_ / (lock_fail_count_ + lock_success_count_);        
+            count_ = dynamic_stickiness;
+            fail_rate = lock_success_count_ / (lock_fail_count_ + lock_success_count_);        
         }
     }
+
+  public:
+    double get_fail_rate(){
+        return fail_rate;
+    }
+
+    double get_dynamic_stickiness(){
+        return dynamic_stickiness;
+    }
+
 };
 
 }  // namespace multiqueue::mode

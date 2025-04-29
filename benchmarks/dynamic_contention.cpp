@@ -490,7 +490,6 @@ void write_result_json(Settings const& settings, SharedData const& data, std::os
     out << std::quoted("results") << ':';
     out << '{';
     out << std::quoted("time_ns") << ':' << std::chrono::nanoseconds{data.end_time - data.start_time}.count() << ',';
-    out << std::quoted("max_contention") << ':' << results::max_contention << ',';
     out << std::quoted("thread_data") << ':';
     out << '[';
     for (auto it = data.thread_data.begin(); it != data.thread_data.end(); ++it) {
@@ -518,7 +517,6 @@ class Context : public thread_coordination::Context {
           shared_data_{&shared_data},
           settings_{&settings} {
     }
-
 #ifdef LOG_OPERATIONS
     void push(std::pair<key_type, value_type> const& e) {
         handle_.push(e);
@@ -533,7 +531,13 @@ class Context : public thread_coordination::Context {
         if (retval) {
             thread_data_.pops.push_back({tick, retval->second});
         }
-        thread_data_.metrics.push_back({tick, results::dynamic_stickiness, this->id(), this->thread_data_.iter_count, results::fail_rate, this->thread_data_.thread_intervals.front().first});
+        thread_data_.metrics.push_back({
+            tick,
+            this->handle_.get_dynamic_stickiness(), 
+            this->id(), 
+            this->thread_data_.iter_count, 
+            this->handle_.get_fail_rate(), 
+            this->thread_data_.thread_intervals.front().first});
         return retval;
     }
 #else
@@ -565,13 +569,13 @@ class Context : public thread_coordination::Context {
 };
 
 // Save the contention for this thread and reset the counter for measuring in the next interval.
-void record_interval(Context& context){
-    long long iterations = context.thread_data().iter_count;
-    context.thread_data().interval_iterations.emplace_back(iterations - context.thread_data().interval_prev_iter);
-    context.thread_data().interval_prev_iter = iterations;
-    context.thread_data().interval_fails.emplace_back(results::lock_fails - context.thread_data().interval_prev_fails);
-    context.thread_data().interval_prev_fails = results::lock_fails;
-}
+// void record_interval(Context& context){
+//     long long iterations = context.thread_data().iter_count;
+//     context.thread_data().interval_iterations.emplace_back(iterations - context.thread_data().interval_prev_iter);
+//     context.thread_data().interval_prev_iter = iterations;
+//     context.thread_data().interval_fails.emplace_back(results::lock_fails - context.thread_data().interval_prev_fails);
+//     context.thread_data().interval_prev_fails = results::lock_fails;
+// }
 
 bool will_hit_timeout(std::chrono::high_resolution_clock::time_point timeout, 
                       std::chrono::high_resolution_clock::time_point interval_end) {
@@ -623,13 +627,11 @@ bool process_intervals(Context& context,
     while (context.id() >= thread_intervals.front().first) {
         if (will_hit_timeout(timeout, interval_times.front())) {
             std::this_thread::sleep_until(timeout);
-            record_interval(context);
             return true;
         }
 
         std::this_thread::sleep_until(interval_times.front());
         interval_times.pop_front();
-        record_interval(context);
         thread_intervals.pop_front();
         if (thread_intervals.empty()) {
             return true;
@@ -657,9 +659,7 @@ bool process_intervals(Context& context,
         interval_end += interval.second;
         interval_times.emplace_back(interval_end);
     }
-    // Reset counters after prefill.
-    results::lock_fails = 0;
-    results::max_contention = 0;
+
     // Sleep if this thread should be inactive from the beginning.
     // Exit if intervals are over or if timeout is reached.
     if (process_intervals(context, thread_intervals, interval_times, timeout)) {
@@ -697,13 +697,11 @@ bool process_intervals(Context& context,
         }
         context.thread_data().iter_count += to - from;
         if (timeout.time_since_epoch().count() != 0 && std::chrono::high_resolution_clock::now() > timeout) {
-            record_interval(context);
             return;
         }
         // Finish if the interval is over.
         if (std::chrono::high_resolution_clock::now() >= interval_times.front()) {
             interval_times.pop_front();
-            record_interval(context);
             thread_intervals.pop_front();
         }
         // Sleep if this thread should be inactive.
