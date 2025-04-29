@@ -190,9 +190,9 @@ class MultiQueue {
                                   cxxopts::value<int>(config.punishment), "NUMBER");
                 cmd.add_options()("y,reward", "Reward for claiming a lock", 
                                   cxxopts::value<int>(config.reward), "NUMBER");
-                cmd.add_options()("lt,lower_threshold", "Lower threshold of lock balance", 
+                cmd.add_options()("z,lower-threshold", "Lower threshold of lock balance", 
                                   cxxopts::value<int>(config.lower_threshold), "NUMBER");
-                cmd.add_options()("ut,upper_threshold", "Upper threshold of lock balance", 
+                cmd.add_options()("v,upper-threshold", "Upper threshold of lock balance", 
                                   cxxopts::value<int>(config.upper_threshold), "NUMBER");
                 #endif
             }
