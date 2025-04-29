@@ -119,7 +119,7 @@ void register_cmd_options(Settings& settings, cxxopts::Options& cmd) {
             ("i,thread-interval-file", "File to read thread intervals from", cxxopts::value<std::filesystem::path>(settings.interval_file), "PATH")
 #ifdef LOG_OPERATIONS
             ("l,log-file", "File to write the operation log to", cxxopts::value<std::filesystem::path>(settings.log_file), "PATH")
-            ("m,log-file_metrics", "File to write the metric log to", cxxopts::value<std::filesystem::path>(settings.log_file_metrics), "PATH")
+            ("m,log-file-metrics", "File to write the metric log to", cxxopts::value<std::filesystem::path>(settings.log_file_metrics), "PATH")
 #endif
 #ifdef WITH_PAPI
             ("r,count-event", "Papi event to count", cxxopts::value<std::vector<std::string>>(settings.papi_events), "STRING")

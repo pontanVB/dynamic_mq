@@ -185,6 +185,10 @@ class MultiQueue {
             if constexpr (has_stickiness) {
                 cmd.add_options()("k,stickiness", "The stickiness period", cxxopts::value<int>(config.stickiness),
                                   "NUMBER");
+                #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+                    cmd.add_options()("d,dynamic-stickiness-file", "File to read stickiness parameters from", 
+                        cxxopts::value<std::filesystem::path>(config.stickiness_file), "PATH");
+                #endif
             }
         }
 
@@ -198,6 +202,24 @@ class MultiQueue {
                     std::cerr << "Error: Stickiness must be at least 1\n";
                     return false;
                 }
+                #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+                if (config.punishment > 0) {
+                    std::cerr << "Error: Punishment must be at most 0\n";
+                    return false;
+                }
+                if (config.reward < 0) {
+                    std::cerr << "Error: Reward must be at least 0\n";
+                    return false;
+                }
+                if (config.lower_threshold >= 0) {
+                    std::cerr << "Error: Lower threshold must be lower than 0\n";
+                    return false;
+                }
+                if (config.upper_threshold <= 0) {
+                    std::cerr << "Error: Upper threshold must be higher than 0\n";
+                    return false;
+                }
+                #endif
             }
             return true;
         }
@@ -207,6 +229,11 @@ class MultiQueue {
             out << "MQ seed: " << config.seed << '\n';
             if constexpr (has_stickiness) {
                 out << "Stickiness: " << config.stickiness << '\n';
+                #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+                out << "Stickiness parameters: " 
+                    << config.punishment << "," << config.reward << "," 
+                    << config.lower_threshold << "," << config.upper_threshold << '\n';
+                #endif
             }
         }
 
@@ -217,6 +244,16 @@ class MultiQueue {
             if constexpr (has_stickiness) {
                 out << ',';
                 out << std::quoted("stickiness") << ':' << config.stickiness;
+                #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+                out << ',';
+                out << std::quoted("stickiness_parameters") << ':';
+                out << '{';
+                out << std::quoted("punishment") << ':' << config.punishment << ',';
+                out << std::quoted("reward") << ':' << config.reward << ',';
+                out << std::quoted("lower_threshold") << ':' << config.lower_threshold << ',';
+                out << std::quoted("upper_threshold") << ':' << config.upper_threshold;
+                out << '}';
+                #endif
             }
             out << '}';
         }

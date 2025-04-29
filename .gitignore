@@ -4,5 +4,5 @@
 *log.txt
 /tools/.venv
 .vscode
-output.json
-output/output.json
+.json
+metrics.txt
