@@ -28,6 +28,7 @@ class StickRandomDynamic {
         int reward{1};
         int lower_threshold{-50};
         int upper_threshold{50};
+        double stick_factor{1};
     };
 
 
@@ -103,7 +104,7 @@ class StickRandomDynamic {
 
                 if (lock_balance >= ctx.config().upper_threshold) {
                     if (dynamic_stickiness > 1) {
-                        dynamic_stickiness /= 2;
+                        dynamic_stickiness = std::floor(dynamic_stickiness / ctx.config().stick_factor);
                     }
                     lock_balance = 0;
                 }
@@ -113,7 +114,7 @@ class StickRandomDynamic {
                 ++lock_fail_count_;
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
-                    dynamic_stickiness *= 2;
+                    dynamic_stickiness = std::ceil(dynamic_stickiness * ctx.config().stick_factor);
                     lock_balance = 0;
                 }
             }
@@ -125,6 +126,9 @@ class StickRandomDynamic {
 
     template <typename Context>
     void push(Context& ctx, typename Context::value_type const& v) {
+
+        
+
         if (!already_fetched) {
             dynamic_stickiness = ctx.config().stickiness;
             already_fetched = true;
@@ -145,7 +149,7 @@ class StickRandomDynamic {
                 lock_balance += ctx.config().reward;
                 if (lock_balance >= ctx.config().upper_threshold) {
                     if (dynamic_stickiness > 1) {
-                        dynamic_stickiness /= 2;
+                        dynamic_stickiness = std::floor(dynamic_stickiness / ctx.config().stick_factor);
                     }
                     lock_balance = 0;
                 }
@@ -155,7 +159,7 @@ class StickRandomDynamic {
                 ++lock_fail_count_;
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
-                    dynamic_stickiness *= 2;
+                    dynamic_stickiness = std::ceil(dynamic_stickiness * ctx.config().stick_factor);
                     lock_balance = 0;
                 }
             }

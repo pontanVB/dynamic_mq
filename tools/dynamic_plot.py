@@ -262,7 +262,7 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
         ):
             plot_index += 1
 
-        # Plot 4: Rank Error
+        # Plot 4: Delay
         if safe_plot_from_df(
             ax=axs[plot_index],
             df=rank_error_df,
@@ -275,7 +275,7 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
             smoothing=True,
             window_size=x_val_amount,
             window_step=window_step,
-            medians=False
+            medians=True
         ):
             plot_index += 1
 

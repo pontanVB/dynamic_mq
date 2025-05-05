@@ -194,6 +194,9 @@ class MultiQueue {
                                   cxxopts::value<int>(config.lower_threshold), "NUMBER");
                 cmd.add_options()("v,upper-threshold", "Upper threshold of lock balance", 
                                   cxxopts::value<int>(config.upper_threshold), "NUMBER");
+                cmd.add_options()("f,stickiness-factor", "The factor for stickiness adjustment", 
+                                  cxxopts::value<double>(config.stick_factor), "NUMBER");
+                               
                 #endif
             }
         }
@@ -225,6 +228,10 @@ class MultiQueue {
                     std::cerr << "Error: Upper threshold must be higher than 0\n";
                     return false;
                 }
+                if (config.stick_factor <= 0) {
+                    std::cerr << "Error: Stick factor must be higher than 0\n";
+                    return false;
+                }
                 #endif
             }
             return true;
@@ -238,7 +245,9 @@ class MultiQueue {
                 #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
                 out << "Stickiness parameters: " 
                     << config.punishment << "," << config.reward << "," 
-                    << config.lower_threshold << "," << config.upper_threshold << '\n';
+                    << config.lower_threshold << "," << config.upper_threshold << '\n'
+                    << "Stickiness factor: "
+                    << config.stick_factor << '\n';
                 #endif
             }
         }
