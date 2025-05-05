@@ -50,7 +50,7 @@ def smooth_values(values, window_size, window_step):
             smoothed_inds.append(i + window_size // 2)
 
             # Slide the window by window_step
-            for _ in range(window_step):
+            for _ in range(min(window_step, len(window))):
                 window.popleft()
 
     return smoothed_vals, smoothed_mids_25, smoothed_mids_50, smoothed_mids_75, smoothed_inds

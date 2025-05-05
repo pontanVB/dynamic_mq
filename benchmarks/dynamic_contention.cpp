@@ -531,13 +531,18 @@ class Context : public thread_coordination::Context {
         if (retval) {
             thread_data_.pops.push_back({tick, retval->second});
         }
+
+
+        #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
         thread_data_.metrics.push_back({
             tick,
             this->handle_.get_dynamic_stickiness(), 
             this->id(), 
             this->thread_data_.iter_count, 
             this->handle_.get_fail_rate(), 
-            this->thread_data_.thread_intervals.front().first});
+            this->thread_data_.thread_intervals.front().first
+        });
+        #endif
         return retval;
     }
 #else
@@ -854,12 +859,16 @@ void run_benchmark(Settings const& settings) {
     std::ofstream log_out(settings.log_file);  // assumed to be valid
     write_log(shared_data.thread_data, log_out);
     log_out.close();
-
-    std::clog << "Writing metric logs...\n";
-    std::ofstream metric_log_out(settings.log_file_metrics);  // assumed to be valid
-    write_log_metrics(shared_data.thread_data, metric_log_out);
-    metric_log_out.close();
+    
+    #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+        std::clog << "Writing metric logs...\n";
+        std::ofstream metric_log_out(settings.log_file_metrics);  // assumed to be valid
+        write_log_metrics(shared_data.thread_data, metric_log_out);
+        metric_log_out.close();
+    #endif
 #endif
+
+
     std::clog << "Done\n";
     std::clog << '\n';
     std::clog << "= Results =\n";
