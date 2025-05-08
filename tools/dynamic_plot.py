@@ -270,7 +270,7 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
             y_col='delay',
             title='Delay over Iterations',
             xlabel='Iteration',
-            ylabel='Delay(s?)',
+            ylabel='Delay',
             color='red',
             smoothing=True,
             window_size=x_val_amount,
