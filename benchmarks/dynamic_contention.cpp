@@ -362,7 +362,7 @@ struct ThreadData {
     };
     struct DynamicLog {
         std::chrono::high_resolution_clock::time_point tick;
-        int stickiness;
+        double stickiness;
         int thread_id;
         long long total_iterations; // For throughput measurement, might tweak.
         double fail_rate;

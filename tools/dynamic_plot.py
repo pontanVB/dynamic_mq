@@ -233,11 +233,11 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
         axs[plot_index].set_xlabel('Iteration')
         axs[plot_index].set_ylabel('Iterations/s')
         axs[plot_index].grid(True, linestyle='--', alpha=0.7)
-        axs[plot_index].text(0.8, 0.5, f"window size: {window_size}",
-                    transform=axs[plot_index].transAxes,
-                    fontsize=12,
-                    verticalalignment='top',
-                    horizontalalignment='left')
+        # axs[plot_index].text(0.8, 0.5, f"window size: {window_size}",
+        #             transform=axs[plot_index].transAxes,
+        #             fontsize=12,
+        #             verticalalignment='top',
+        #             horizontalalignment='left')
         
         plot_index += 1
 
