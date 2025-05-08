@@ -29,6 +29,7 @@ class StickRandomDynamic {
         int lower_threshold{-50};
         int upper_threshold{50};
         double stick_factor{1};
+        int stickiness_cap{100000};
     };
 
 
@@ -114,7 +115,9 @@ class StickRandomDynamic {
                 ++lock_fail_count_;
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
+                    if (dynamic_stickiness < ctx.config().stickiness_cap){
                     dynamic_stickiness = std::ceil(dynamic_stickiness * ctx.config().stick_factor);
+                    }
                     lock_balance = 0;
                 }
             }
@@ -159,7 +162,10 @@ class StickRandomDynamic {
                 ++lock_fail_count_;
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
-                    dynamic_stickiness = std::ceil(dynamic_stickiness * ctx.config().stick_factor);
+                    if (dynamic_stickiness < ctx.config().stickiness_cap){
+                        dynamic_stickiness = std::ceil(dynamic_stickiness * ctx.config().stick_factor);
+                    }
+                    
                     lock_balance = 0;
                 }
             }
