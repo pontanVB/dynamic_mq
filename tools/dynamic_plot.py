@@ -120,10 +120,19 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
                 df[y_col], window_size, window_step, medians
             )
             x_vals = smooth_inds
+
+            if len(x_vals) != len(smooth_vals):
+                print(f"Difference between smoothed values and indices: {len(x_vals)-len(smooth_vals)}")
+                min_length = min(len(x_vals), len(smooth_vals))
+                x_vals = x_vals[:min_length]
+                smooth_vals = smooth_vals[:min_length]
+
+
             ax.plot(x_vals, smooth_vals, '-', linewidth=2, color=color, label='Average')
             ax.plot(x_vals, smooth_25, '--', linewidth=1, color='red', label='25th percentile')
             ax.plot(x_vals, smooth_50, '--', linewidth=1, color='blue', label='50th percentile (Median)')
             ax.plot(x_vals, smooth_75, '--', linewidth=1, color='green', label='75th percentile')
+            
         else:
             smooth_vals, smooth_inds = smooth_values_pandas(
                 df[y_col], window_size, window_step, medians
