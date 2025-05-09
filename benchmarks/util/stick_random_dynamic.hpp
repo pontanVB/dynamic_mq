@@ -70,8 +70,12 @@ class StickRandomDynamic {
 
     template <typename Context>
     std::optional<typename Context::value_type> try_pop(Context& ctx) {
+        if(count_ < 0){
+            std::cerr << "Error: Negative count_ in stick_random_dynamic"
+            return;
+        }
         if (!already_fetched) {
-            dynamic_stickiness = ctx.config().stickiness;
+            dynamic_stickiness = static_cast<double>(ctx.config().stickiness);
             already_fetched = true;
         }
         if (count_ == 0) {
@@ -129,11 +133,13 @@ class StickRandomDynamic {
 
     template <typename Context>
     void push(Context& ctx, typename Context::value_type const& v) {
-
-        
+        if(count_ < 0){
+            std::cerr << "Error: Negative count_ in stick_random_dynamic"
+            return;
+        }
 
         if (!already_fetched) {
-            dynamic_stickiness = ctx.config().stickiness;
+            dynamic_stickiness = static_cast<double>(ctx.config().stickiness);
             already_fetched = true;
         }
         if (count_ == 0) {
