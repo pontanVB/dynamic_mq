@@ -12,7 +12,7 @@ from datetime import datetime
  # CSV handiling / conversion! - Done
 
 
-
+ # OLD - not using pandas
 def smooth_values(values, window_size, window_step):
     """
     Smooths a list of values and calculates the 25th, 50th, and 75th percentiles.
@@ -57,6 +57,23 @@ def smooth_values(values, window_size, window_step):
 
 from collections import deque
 
+
+def smooth_values_pandas(values, window_size, window_step, mids=False):
+    series = pd.Series(values)
+    rolled = series.rolling(window=window_size)
+
+    smoothed_vals = rolled.mean().iloc[::window_step].dropna().to_numpy()
+    smoothed_inds = np.arange(window_size // 2, len(values) - window_size // 2 + 1, window_step)
+
+    if mids:
+        smoothed_mids_25 = rolled.quantile(0.25).iloc[::window_step].dropna().to_numpy()
+        smoothed_mids_50 = rolled.quantile(0.50).iloc[::window_step].dropna().to_numpy()
+        smoothed_mids_75 = rolled.quantile(0.75).iloc[::window_step].dropna().to_numpy()
+        return smoothed_vals, smoothed_mids_25, smoothed_mids_50, smoothed_mids_75, smoothed_inds
+    else:
+        return smoothed_vals, smoothed_inds
+
+
 def throughput_calc(data_df, window_size, window_step):
     """
     Calculates throughput over non-overlapping or step-wise overlapping windows.
@@ -95,17 +112,24 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
     x_vals = []
     y_vals = []
 
-    if (smoothing and y_col in df.columns):
-        smooth_vals, smooth_25, smooth_50, smooth_75, smooth_inds = smooth_values(df[y_col], window_size, window_step)
-        x_vals = smooth_inds
+    if smoothing and y_col in df.columns:
         print("smoothing")
-        ax.plot(x_vals, smooth_vals, '-', linewidth=2, color=color, label='Average')
 
         if medians:
-            # Plotting all variants
+            smooth_vals, smooth_25, smooth_50, smooth_75, smooth_inds = smooth_values_pandas(
+                df[y_col], window_size, window_step, medians
+            )
+            x_vals = smooth_inds
+            ax.plot(x_vals, smooth_vals, '-', linewidth=2, color=color, label='Average')
             ax.plot(x_vals, smooth_25, '--', linewidth=1, color='red', label='25th percentile')
             ax.plot(x_vals, smooth_50, '--', linewidth=1, color='blue', label='50th percentile (Median)')
             ax.plot(x_vals, smooth_75, '--', linewidth=1, color='green', label='75th percentile')
+        else:
+            smooth_vals, smooth_inds = smooth_values_pandas(
+                df[y_col], window_size, window_step, medians
+            )
+            x_vals = smooth_inds
+            ax.plot(x_vals, smooth_vals, '-', linewidth=2, color=color, label='Average')
 
 
     elif {x_col, y_col}.issubset(df.columns):
