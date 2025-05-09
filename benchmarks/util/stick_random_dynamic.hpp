@@ -44,7 +44,7 @@ class StickRandomDynamic {
    private:
     pcg32 rng_{};
     std::array<std::size_t, static_cast<std::size_t>(num_pop_candidates)> pop_index_{};
-    double count_{};
+    int count_{};
     double lock_fail_count_{};
     double lock_success_count_{};
     int lock_balance = 0;
@@ -72,7 +72,7 @@ class StickRandomDynamic {
     std::optional<typename Context::value_type> try_pop(Context& ctx) {
         if(count_ < 0){
             std::cerr << "Error: Negative count_ in stick_random_dynamic";
-            return;
+            return std::nullopt;
         }
         if (!already_fetched) {
             dynamic_stickiness = static_cast<double>(ctx.config().stickiness);
@@ -80,7 +80,7 @@ class StickRandomDynamic {
         }
         if (count_ == 0) {
             refresh_pop_index(ctx.num_pqs());
-            count_ = dynamic_stickiness;
+            count_ = static_cast<int>(dynamic_stickiness);
         }
         while (true) {
             std::size_t best = pop_index_[0];
@@ -126,7 +126,7 @@ class StickRandomDynamic {
                 }
             }
             refresh_pop_index(ctx.num_pqs());
-            count_ = dynamic_stickiness;
+            count_ = static_cast<int>(dynamic_stickiness);;
             fail_rate = lock_success_count_ / (lock_fail_count_ + lock_success_count_);        
         }
     }
@@ -144,7 +144,7 @@ class StickRandomDynamic {
         }
         if (count_ == 0) {
             refresh_pop_index(ctx.num_pqs());
-            count_ = dynamic_stickiness;
+            count_ = static_cast<int>(dynamic_stickiness);;
         }
         std::size_t push_index = rng_() % num_pop_candidates;
         while (true) {
@@ -176,7 +176,7 @@ class StickRandomDynamic {
                 }
             }
             refresh_pop_index(ctx.num_pqs());
-            count_ = dynamic_stickiness;
+            count_ = static_cast<int>(dynamic_stickiness);;
             fail_rate = lock_success_count_ / (lock_fail_count_ + lock_success_count_);        
         }
     }
