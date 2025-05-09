@@ -9,7 +9,7 @@ import argparse
 from datetime import datetime
 
  # TODO 
- # CSV handiling / conversion! - Done
+ # Change to datashader plots?
 
 
  # OLD - not using pandas
@@ -129,6 +129,14 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
                 df[y_col], window_size, window_step, medians
             )
             x_vals = smooth_inds
+
+            if len(x_vals) != len(smooth_vals):
+                print(f"Difference between smoothed values and indices: {len(x_vals)-len(smooth_vals)}")
+                min_length = min(len(x_vals), len(smooth_vals))
+                x_vals = x_vals[:min_length]
+                smooth_vals = smooth_vals[:min_length]
+
+
             ax.plot(x_vals, smooth_vals, '-', linewidth=2, color=color, label='Average')
 
 
@@ -154,9 +162,6 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
 
 
 
-
-# TODO - Split into separate make_plot and process_files functions
-
 def process_files(log_file, rank_file, plot_name, window_size, window_step):
     """Function to process the input files using pandas."""
 
@@ -167,7 +172,7 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
     rank_error_exist = False
 
     # Load log files
-    # Ok to provide a dile or not. Not ok to provide invalid file
+    # Ok to provide a file or not. Not ok to provide invalid file
     if log_file is None:
         print("Dynamic Logs not provided")
         metrics_exist = False
@@ -349,23 +354,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-
-
-# TODO - thread specific plots, to see outliers
-# 
-# # Plot iterations over time for each thread in the third subplot (ax[2])
-# for thread_id, group in df_threads:
-#     # Plot iterations over time for this thread on the third subplot
-#     axs[2].plot(group['time'], group['thread_specific_pops'], 
-#                label=f'Thread {thread_id}', marker='o', markersize=4, alpha= 0.7)
-
-# # Customize the third subplot
-# axs[2].set_xlabel('Time')
-# axs[2].set_ylabel('Total Iterations')
-# axs[2].set_title('Iterations Over Time Per Thread')
-# axs[2].grid(True, alpha=0.3)
-
-# # Add legend to the third subplot (only if there are multiple threads)
-# axs[2].legend()
 
