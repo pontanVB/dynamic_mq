@@ -108,6 +108,25 @@ def throughput_calc(data_df, window_size, window_step):
 
     return throughput_vals, time_vals, throughput_inds
 
+
+# Computing the failrate using pandas
+def fail_rate_calc(data_df, window_size, window_step):
+    # Compute rolling sum of fails
+    fails_rolled = data_df['lock_fails'].rolling(window=window_size).sum()
+
+    # Drop NaNs and compute fail rate
+    fail_rates = (1 - fails_rolled / (window_size * 2 + fails_rolled)).dropna()
+
+    # Subsample
+    smoothed_vals = fail_rates.iloc[::window_step].to_numpy()
+
+    # Compute smoothed indices (center of window)
+    smoothed_inds = np.arange(window_size // 2, 
+                              window_size // 2 + window_step * len(smoothed_vals), 
+                              window_step)
+
+    return smoothed_vals, smoothed_inds
+
 def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue', smoothing=False, window_size=1, window_step=1, medians=False):
     x_vals = []
     y_vals = []
@@ -132,7 +151,7 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
             ax.plot(x_vals, smooth_25, '--', linewidth=1, color='red', label='25th percentile')
             ax.plot(x_vals, smooth_50, '--', linewidth=1, color='blue', label='50th percentile (Median)')
             ax.plot(x_vals, smooth_75, '--', linewidth=1, color='green', label='75th percentile')
-            
+
         else:
             smooth_vals, smooth_inds = smooth_values_pandas(
                 df[y_col], window_size, window_step, medians
@@ -206,7 +225,7 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
 
     # Plot setup
 
-    specific_fields = ['tick', 'active_threads', 'stickiness', 'rank_error','lock_succes_rate', 'delay']
+    specific_fields = ['tick', 'active_threads', 'stickiness', 'rank_error','lock_fails', 'delay']
 
     if metrics_exist:
         x_val_amount = int(len(data_df) / window_size)
@@ -240,7 +259,7 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
         plot_specs = [
             ('stickiness', 'Plot of Thread Average Stickiness over Iterations', 'Stickiness', 'blue', True, True),
             ('active_threads', 'Plot of Active Threads over Iterations', 'Active Threads', 'deepskyblue', False, False),
-            ('lock_succes_rate', 'Lock sucess rate over iterations', 'Sucess Rate', 'lime', True, False),
+            #('lock_succes_rate', 'Lock sucess rate over iterations', 'Sucess Rate', 'lime', True, False),
             # Add more tuples as needed
         ]
 
@@ -276,6 +295,16 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
         #             fontsize=12,
         #             verticalalignment='top',
         #             horizontalalignment='left')
+        
+        plot_index += 1
+
+        # Plot 3: Fail rate
+        rates, rates_inds = fail_rate_calc(data_df, x_val_amount, x_val_amount)
+        axs[plot_index].plot(rates_inds, rates, '-', linewidth=2, color='green')
+        axs[plot_index].set_title('Sucess rate Over Iterations')
+        axs[plot_index].set_xlabel('Iteration')
+        axs[plot_index].set_ylabel('Fail rate')
+        axs[plot_index].grid(True, linestyle='--', alpha=0.7)
         
         plot_index += 1
 

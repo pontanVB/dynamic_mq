@@ -45,13 +45,12 @@ class StickRandomDynamic {
     pcg32 rng_{};
     std::array<std::size_t, static_cast<std::size_t>(num_pop_candidates)> pop_index_{};
     int count_{};
-    double lock_fail_count_{};
+    int lock_fail_count_{};
     double lock_success_count_{};
     int lock_balance = 0;
     bool already_fetched = false;
 
     double dynamic_stickiness{};
-    double fail_rate{};
 
     void refresh_pop_index(std::size_t num_pqs) noexcept {
         for (auto it = pop_index_.begin(); it != pop_index_.end(); ++it) {
@@ -104,7 +103,7 @@ class StickRandomDynamic {
                 guard.popped();
                 guard.unlock();
                 --count_;
-                ++lock_success_count_;                
+                //RESET LOCK FAILS????
                 lock_balance += ctx.config().reward;
 
                 if (lock_balance >= ctx.config().upper_threshold) {
@@ -127,7 +126,6 @@ class StickRandomDynamic {
             }
             refresh_pop_index(ctx.num_pqs());
             count_ = static_cast<int>(dynamic_stickiness);;
-            fail_rate = lock_success_count_ / (lock_fail_count_ + lock_success_count_);        
         }
     }
 
@@ -154,7 +152,7 @@ class StickRandomDynamic {
                 guard.pushed();
                 guard.unlock();
                 --count_;
-                ++lock_success_count_;
+                //DON'T RESET LOCK COUNT?
                 lock_balance += ctx.config().reward;
                 if (lock_balance >= ctx.config().upper_threshold) {
                     if (dynamic_stickiness > 1) {
@@ -177,17 +175,20 @@ class StickRandomDynamic {
             }
             refresh_pop_index(ctx.num_pqs());
             count_ = static_cast<int>(dynamic_stickiness);;
-            fail_rate = lock_success_count_ / (lock_fail_count_ + lock_success_count_);        
         }
     }
 
   public:
-    double get_fail_rate(){
-        return fail_rate;
+    int get_lock_fails(){
+        return lock_fail_count_;
     }
 
     double get_dynamic_stickiness(){
         return dynamic_stickiness;
+    }
+
+    void reset_lock_fails(){
+        lock_fail_count_ = 0;
     }
 
 };

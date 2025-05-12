@@ -365,7 +365,7 @@ struct ThreadData {
         double stickiness;
         int thread_id;
         long long total_iterations; // For throughput measurement, might tweak.
-        double fail_rate;
+        int lock_fail_count;
         int active_threads;
         
     };
@@ -456,13 +456,13 @@ void write_log_metrics(std::vector<ThreadData> const& thread_data, std::ostream&
         metrics.insert(metrics.end(), e.metrics.begin(), e.metrics.end());
     }
     std::sort(metrics.begin(), metrics.end(), [](auto const& lhs, auto const& rhs) { return lhs.tick < rhs.tick; });
-    out << "tick,stickiness,thread_id,total_iterations,lock_succes_rate,active_threads\n";
+    out << "tick,stickiness,thread_id,total_iterations,lock_fails,active_threads\n";
     for (auto const& metric : metrics) {
         out << metric.tick.time_since_epoch().count() << ',' 
             << metric.stickiness << ',' 
             << metric.thread_id << ',' 
             << metric.total_iterations << ','
-            << metric.fail_rate << ','
+            << metric.lock_fail_count << ','
             << metric.active_threads
             << '\n';
     }
@@ -539,9 +539,10 @@ class Context : public thread_coordination::Context {
             this->handle_.get_dynamic_stickiness(), 
             this->id(), 
             this->thread_data_.iter_count, 
-            this->handle_.get_fail_rate(), 
+            this->handle_.get_lock_fails(), 
             this->thread_data_.thread_intervals.front().first
         });
+        this->handle_.reset_lock_fails();
         #endif
         return retval;
     }
