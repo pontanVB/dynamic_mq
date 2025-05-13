@@ -134,6 +134,7 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
     if smoothing and y_col in df.columns:
         print("smoothing")
 
+
         if medians:
             smooth_vals, smooth_25, smooth_50, smooth_75, smooth_inds = smooth_values_pandas(
                 df[y_col], window_size, window_step, medians
@@ -167,11 +168,14 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
 
             ax.plot(x_vals, smooth_vals, '-', linewidth=2, color=color, label='Average')
 
+        ax.legend(loc='upper left')
+
+
 
     elif {x_col, y_col}.issubset(df.columns):
         x_vals = df[x_col]
         y_vals = df[y_col]
-        ax.plot(x_vals, y_vals, '-', linewidth=2, color=color, label=y_col)
+        ax.plot(x_vals, y_vals, '-', linewidth=2, color=color)
 
     elif not (y_col in df.columns):
         print(f"Column {y_col} is missing from {df.columns}")
@@ -184,7 +188,6 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.grid(True, linestyle='--', alpha=0.7)
-    ax.legend(loc='upper left')
 
     return True
 
@@ -257,8 +260,8 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
 
 
         plot_specs = [
-            ('stickiness', 'Plot of Thread Average Stickiness over Iterations', 'Stickiness', 'blue', True, True),
-            ('active_threads', 'Plot of Active Threads over Iterations', 'Active Threads', 'deepskyblue', False, False),
+            ('stickiness', 'Stickiness over Iterations', 'Stickiness', 'blue', True, True),
+            ('active_threads', 'Active Threads over Iterations', 'Active Threads', 'deepskyblue', False, False),
             #('lock_succes_rate', 'Lock sucess rate over iterations', 'Sucess Rate', 'lime', True, False),
             # Add more tuples as needed
         ]
@@ -322,7 +325,7 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
             df=rank_error_df,
             x_col='pops',  # assuming same indexing; adjust if needed
             y_col='rank_error',
-            title='Plot of Rank Error over Iterations',
+            title='Rank Error over Iterations',
             xlabel='Iteration',
             ylabel='Rank Error',
             color='red',
