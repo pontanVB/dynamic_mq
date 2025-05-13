@@ -286,7 +286,7 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
         # Plot 2: Throughput
         avg_iters, avg_iters_times, avg_iters_inds = throughput_calc(data_df, x_val_amount, x_val_amount)
         axs[plot_index].plot(avg_iters_inds, avg_iters, '-', linewidth=2, color='green')
-        axs[plot_index].set_title('Throughput Over Iterations')
+        axs[plot_index].set_title('Throughput over Iterations')
         axs[plot_index].set_xlabel('Iteration')
         axs[plot_index].set_ylabel('Iterations/s')
         axs[plot_index].grid(True, linestyle='--', alpha=0.7)
@@ -305,9 +305,9 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
         axs[plot_index].set_yticklabels([f'{t:.2f}' for t in ticks])  # Format as 0.05, 0.10, ...
 
         axs[plot_index].plot(rates_inds, rates, '-', linewidth=2, color='green')
-        axs[plot_index].set_title('Sucess rate Over Iterations')
+        axs[plot_index].set_title('Success Rate over Iterations')
         axs[plot_index].set_xlabel('Iteration')
-        axs[plot_index].set_ylabel('Fail rate')
+        axs[plot_index].set_ylabel('Success Rate')
         axs[plot_index].grid(True, linestyle='--', alpha=0.7)
         
         plot_index += 1
