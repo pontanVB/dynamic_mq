@@ -69,7 +69,9 @@ def smooth_values_pandas(values, window_size, window_step, mids=False):
         smoothed_mids_25 = rolled.quantile(0.25).iloc[::window_step].dropna().to_numpy()
         smoothed_mids_50 = rolled.quantile(0.50).iloc[::window_step].dropna().to_numpy()
         smoothed_mids_75 = rolled.quantile(0.75).iloc[::window_step].dropna().to_numpy()
-        return smoothed_vals, smoothed_mids_25, smoothed_mids_50, smoothed_mids_75, smoothed_inds
+        smoothed_mids_100 = rolled.quantile(1.0).iloc[::window_step].dropna().to_numpy()
+        return smoothed_vals, smoothed_mids_25, smoothed_mids_50, smoothed_mids_75, smoothed_mids_100, smoothed_inds  
+    
     else:
         return smoothed_vals, smoothed_inds
 
@@ -136,7 +138,7 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
 
 
         if medians:
-            smooth_vals, smooth_25, smooth_50, smooth_75, smooth_inds = smooth_values_pandas(
+            smooth_vals, smooth_25, smooth_50, smooth_75, smooth_100, smooth_inds = smooth_values_pandas(
                 df[y_col], window_size, window_step, medians
             )
             x_vals = smooth_inds
@@ -148,10 +150,11 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
                 smooth_vals = smooth_vals[:min_length]
 
 
-            ax.plot(x_vals, smooth_vals, '-', linewidth=2, color=color, label='Average')
-            ax.plot(x_vals, smooth_25, '--', linewidth=1, color='red', label='25th percentile')
-            ax.plot(x_vals, smooth_50, '--', linewidth=1, color='blue', label='50th percentile (Median)')
-            ax.plot(x_vals, smooth_75, '--', linewidth=1, color='green', label='75th percentile')
+            ax.plot(x_vals, smooth_vals, '-', linewidth=2, color='orange', label='Mean')
+            ax.plot(x_vals, smooth_25, '--', linewidth=1, color='red', label='25%')
+            ax.plot(x_vals, smooth_50, '--', linewidth=1, color='blue', label='50%')
+            ax.plot(x_vals, smooth_75, '--', linewidth=1, color='green', label='75%')
+            ax.plot(x_vals, smooth_100, '--', linewidth=1, color='purple', label='100%')
 
         else:
             smooth_vals, smooth_inds = smooth_values_pandas(
