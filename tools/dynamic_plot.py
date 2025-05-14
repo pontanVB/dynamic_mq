@@ -263,8 +263,8 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
 
 
         plot_specs = [
-            ('stickiness', 'Stickiness over Iterations', 'Stickiness', 'blue', True, True),
             ('active_threads', 'Active Threads over Iterations', 'Active Threads', 'deepskyblue', False, False),
+            ('stickiness', 'Stickiness over Iterations', 'Stickiness', 'blue', True, True),
             #('lock_succes_rate', 'Lock sucess rate over iterations', 'Sucess Rate', 'lime', True, False),
             # Add more tuples as needed
         ]
@@ -288,8 +288,22 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
                 if success:
                     plot_index += 1
 
+        # Plot 2: Fail rate
+        rates, rates_inds = fail_rate_calc(data_df, x_val_amount, x_val_amount)
+        ticks = [i / 20 for i in range(1, 21)]  # 0.05 to 1.00
+        axs[plot_index].set_yticks(ticks)
+        axs[plot_index].set_yticklabels([f'{t:.2f}' for t in ticks])  # Format as 0.05, 0.10, ...
 
-        # Plot 2: Throughput
+        axs[plot_index].plot(rates_inds, rates, '-', linewidth=2, color='green')
+        axs[plot_index].set_title('Success Rate over Iterations')
+        axs[plot_index].set_xlabel('Iteration')
+        axs[plot_index].set_ylabel('Success Rate')
+        axs[plot_index].grid(True, linestyle='--', alpha=0.7)
+        
+        plot_index += 1
+
+
+        # Plot 3: Throughput
         avg_iters, avg_iters_times, avg_iters_inds = throughput_calc(data_df, x_val_amount, x_val_amount)
         axs[plot_index].plot(avg_iters_inds, avg_iters, '-', linewidth=2, color='green')
         axs[plot_index].set_title('Throughput over Iterations')
@@ -304,19 +318,7 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
         
         plot_index += 1
 
-        # Plot 3: Fail rate
-        rates, rates_inds = fail_rate_calc(data_df, x_val_amount, x_val_amount)
-        ticks = [i / 20 for i in range(1, 21)]  # 0.05 to 1.00
-        axs[plot_index].set_yticks(ticks)
-        axs[plot_index].set_yticklabels([f'{t:.2f}' for t in ticks])  # Format as 0.05, 0.10, ...
 
-        axs[plot_index].plot(rates_inds, rates, '-', linewidth=2, color='green')
-        axs[plot_index].set_title('Success Rate over Iterations')
-        axs[plot_index].set_xlabel('Iteration')
-        axs[plot_index].set_ylabel('Success Rate')
-        axs[plot_index].grid(True, linestyle='--', alpha=0.7)
-        
-        plot_index += 1
 
 
     if rank_error_exist:
