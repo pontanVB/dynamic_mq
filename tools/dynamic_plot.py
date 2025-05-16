@@ -273,7 +273,7 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
 
 
         plot_specs = [
-            ('thread_count', 'Active Threads over Iterations', 'Active Threads', 'deepskyblue', False, False),
+            ('active_threads', 'Active Threads over Iterations', 'Active Threads', 'deepskyblue', False, False),
             ('stickiness', 'Stickiness over Iterations', 'Stickiness', 'blue', True, True),
             #('lock_succes_rate', 'Lock sucess rate over iterations', 'Sucess Rate', 'lime', True, False),
             # Add more tuples as needed
