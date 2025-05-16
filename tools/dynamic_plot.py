@@ -261,9 +261,19 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
         data_df['thread_specific_pops'] = data_df.groupby('thread_id').cumcount() + 1
         print(f"our data len: {len(data_df)}")
 
+        # Running max for 
+        running_max = []
+        current_max = 0
+        for val in data_df["thread_id"]:
+            if val > current_max:
+                current_max = val
+            running_max.append(current_max + 1)  # +1 since thread_id starts at 0
+        
+        data_df["thread_count"] = running_max
+
 
         plot_specs = [
-            ('active_threads', 'Active Threads over Iterations', 'Active Threads', 'deepskyblue', False, False),
+            ('thread_count', 'Active Threads over Iterations', 'Active Threads', 'deepskyblue', False, False),
             ('stickiness', 'Stickiness over Iterations', 'Stickiness', 'blue', True, True),
             #('lock_succes_rate', 'Lock sucess rate over iterations', 'Sucess Rate', 'lime', True, False),
             # Add more tuples as needed
