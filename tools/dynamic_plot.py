@@ -7,6 +7,7 @@ import pandas as pd
 from collections import deque
 import argparse
 from datetime import datetime
+import matplotlib.dates as mdates
 
  # TODO 
  # Change to datashader plots?
@@ -76,6 +77,7 @@ def smooth_values_pandas(values, window_size, window_step, mids=False):
         return smoothed_vals, smoothed_inds
 
 
+
 def throughput_calc(data_df, window_size, window_step):
     """
     Calculates throughput over non-overlapping or step-wise overlapping windows.
@@ -128,6 +130,40 @@ def fail_rate_calc(data_df, window_size, window_step):
                               window_step)
 
     return smoothed_vals, smoothed_inds
+
+
+def interpolate_threads(df, y_header):
+    common_x = np.linspace(df["pops"].min(), df["pops"].max(), 100)
+    interpolated_ys = []
+
+    for thread_id, group in df.groupby('thread_id'):
+        x_vals = group['pops']
+        y_vals = group[y_header] 
+
+        interp_y = np.interp(common_x, x_vals, y_vals)
+        interpolated_ys.append(interp_y)
+
+    average_y = np.mean(interpolated_ys, axis=0)
+    return common_x, average_y
+
+def interpolate_threads_time(df, y_header):
+    unique_ticks = np.unique(df['tick'])
+    common_ticks = np.linspace(unique_ticks.min(), unique_ticks.max(), 100)
+    interpolated_ys = []
+
+    for thread_id, group in df.groupby('thread_id'):
+        thread_ticks = group['tick']
+        y_vals = group[y_header] 
+
+        interp_y = np.interp(thread_ticks, y_vals)
+        interpolated_ys.append(interp_y)
+
+    # interpolated_ys = np.vstack(interpolated_ys)
+    average_y = np.mean(interpolated_ys, axis=0)
+    return common_ticks, average_y
+
+
+
 
 def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue', smoothing=False, window_size=1, window_step=1, medians=False):
     x_vals = []
@@ -194,6 +230,80 @@ def safe_plot_from_df(ax, df, x_col, y_col, title, xlabel, ylabel, color='blue',
 
     return True
 
+def time_averaged_old(df: pd.DataFrame, headers, time_sample=1):
+    valid_headers = [h for h in headers if h in df.columns]
+
+    if not valid_headers:
+        raise ValueError("None of the provided headers exist in the DataFrame")
+
+    df = df.set_index('tick')
+    df.index = pd.to_datetime(df.index)
+    averaged = df.resample(f'{time_sample}ms')[valid_headers].mean()
+
+    start_time = averaged.index[0]
+    relative_times_ms = (averaged.index - start_time).total_seconds() * 1000
+
+    # Return both the averaged DataFrame and the time index
+    return averaged, relative_times_ms, valid_headers
+
+
+
+def time_averaged(df: pd.DataFrame, headers, time_sample=1):
+    valid_headers = [h for h in headers if h in df.columns]
+    if not valid_headers:
+        print("None of the provided headers exist in the DataFrame")
+        return
+
+    df = df.set_index('tick')
+    df.index = pd.to_datetime(df.index)
+
+    # Resample once
+    resampled = df.resample(f'{time_sample}ms')[valid_headers]
+
+    # Calculate size, percentiles, mean on the resampled groups
+    # size = resampled.size().add_suffix('_size')
+    mean = resampled.mean().add_suffix('_mean')
+    p25     = resampled.quantile(0.25).add_suffix('_p25')
+    p50     = resampled.quantile(0.50).add_suffix('_p50')
+    p75     = resampled.quantile(0.75).add_suffix('_p75')
+    p100    = resampled.quantile(1.00).add_suffix('_p100')
+
+    averaged = pd.concat([p25, p50, p75, p100, mean], axis=1)
+
+    # Relative time in milliseconds
+    start_time = averaged.index[0]
+    relative_times_ms = (averaged.index - start_time).total_seconds() * 1000
+
+    return averaged, relative_times_ms, valid_headers
+
+
+def thread_averaged(df: pd.DataFrame, headers, time_sample=1):
+    valid_headers = [h for h in headers if h in df.columns]
+    if not valid_headers:
+        print("None of the provided headers exist in the DataFrame")
+        return
+
+    df = df.set_index('tick')
+    df.index = pd.to_datetime(df.index)
+
+    # Group by thread and then resample per time window
+    grouped = df.groupby('thread_id')
+
+    thread_data = {}
+    for thread_id, group in grouped:
+        resampled = group.resample(f'{time_sample}ms')[valid_headers]
+        stats = resampled.mean()  # you can also compute other stats here
+        stats['thread_id'] = thread_id
+        thread_data[thread_id] = stats
+
+    # Combine all thread DataFrames
+    thread_list = pd.concat(thread_data.values())
+
+    # Set time as index and return
+    thread_list.index.name = 'time'
+    return thread_list
+
+
 
 
 def process_files(log_file, rank_file, plot_name, window_size, window_step):
@@ -228,7 +338,116 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
     else:
         print(f"Error: Rank error file not found: {rank_file}")
         return
+    
+    if rank_file and metrics_exist:
+        data_df = (pd.concat([data_df, rank_error_df], axis=1))
 
+
+    # Adding new columns
+    data_df['success_rate'] = 2 / (data_df['lock_fails'] + 2)
+    # data_df['success_rate'] = data_df['success_rate'].where(data_df['success_rate'] > 1e-3, 0.0)
+
+
+    # File with new fields
+    data_df.to_csv('debug_csv.csv')
+
+    
+    # Time interval for displaying plots in ms
+    time_interval = 25
+
+    # Time interval for granularity
+    time_sample = 2
+
+    # Headers to plot
+    headers = []
+
+    
+    # Calculate a dataFrame with thread averages and percentiles for these headers
+    thread_headers = ['success_rate', 'stickiness']
+    thread_averaged_df = thread_averaged(data_df, thread_headers, time_sample)
+    thread_averaged_df = thread_averaged_df.groupby('time').mean() 
+    headers.extend(thread_headers)
+
+    # Debug csv
+    thread_averaged_df.to_csv('thread_averaged.csv')
+
+    # Calculate a dataFrame with element averages and percentiles for these headers
+    system_headers = ['active_threads', 'rank_error', 'delay']
+    averaged_df, times, valid_headers = time_averaged(data_df, system_headers, time_sample)
+    headers.extend(valid_headers)
+
+
+    if len(headers) == 1:
+        axs = [axs]
+
+
+    #Adding Troughput (some redundant code can be moved from 'time averaged' to above the function call as index is needed here)
+    data_df = data_df.set_index('tick')
+    data_df.index = pd.to_datetime(data_df.index)
+    troughput_index = 1
+    throughput = data_df.resample(f'{time_sample}ms').size()
+    headers.insert(troughput_index, 'troughput')
+    fig, axs = plt.subplots(len(headers), 1, figsize=(10, 4 * len(headers)), sharex=True)
+    
+
+
+
+
+    colors = ['red', 'green', 'blue']
+
+    # Plotting averages and percentiles
+
+    for i, header in enumerate(headers):
+        if header == 'troughput':
+            axs[i].plot(times, throughput, '-', linewidth=2, color='darkgreen', label='temp')
+        elif header in ['success_rate', 'stickiness']:
+            axs[i].plot(times, thread_averaged_df[header], '-', linewidth=2, color='darkgreen', label='thread_average')
+            # axs[i].plot(times, thread_averaged_df_25[header], '-', linewidth=2, color='purple', label='100%')
+        elif i >= 3:
+            axs[i].plot(times, averaged_df[f"{header}_mean"], '-', linewidth=2, color='orange', label='mean')
+            axs[i].plot(times, averaged_df[f"{header}_p25"], '--', linewidth=1, color='red', label='25%')
+            axs[i].plot(times, averaged_df[f"{header}_p50"], '--', linewidth=1, color='blue', label='50%')
+            axs[i].plot(times, averaged_df[f"{header}_p75"], '--', linewidth=1, color='green', label='75%')
+            axs[i].plot(times, averaged_df[f"{header}_p100"], '--', linewidth=1, color='purple', label='100%')
+        else:
+            axs[i].plot(times, averaged_df[f"{header}_mean"], '-', linewidth=2, color=colors[i], label='mean')
+
+
+        axs[i].set_title(f"{header.replace('_', ' ').title()} Over Time")
+        axs[i].set_ylabel(header.replace('_', ' ').title())
+        axs[i].grid(True, linestyle='--', alpha=0.7)
+        axs[i].legend()
+    
+    axs[troughput_index].set_title("Throughput Over Time")
+    axs[troughput_index].set_ylabel(f"Elements per {time_sample} (ms)")
+    
+    axs[-1].set_xlabel("Time (ms)")
+    axs[-1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervalms
+    plt.tight_layout()
+
+    axs[-1].set_xlabel(f"Time ({time_sample}ms ganularity)")
+    plt.tight_layout()
+
+
+
+    # Date
+    date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") 
+    
+    # Save plot inside /plots/plt_name-date.png
+    os.makedirs("plots", exist_ok=True)
+
+    # Save plot
+    plot_dir = os.path.join("plots", f"{plot_name}_{date}.png")
+    plt.savefig(plot_dir)
+    print(f"saved plot to:{plot_name}_{date}.png")
+
+    # plt.savefig(plot_dir)
+    plt.close()
+
+    return
+
+    # --------------------------------------------------------------------------------------------
+    # OLD
     # Plot setup
 
     specific_fields = ['tick', 'active_threads', 'stickiness', 'rank_error','lock_fails', 'delay']
@@ -259,7 +478,35 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
         
         data_df['pops'] = range(len(data_df))
         data_df['thread_specific_pops'] = data_df.groupby('thread_id').cumcount() + 1
+        data_df['success_rate'] = np.where(
+           data_df['lock_fails'] == 0,
+            1,
+            2 / (data_df['lock_fails'] + 2)
+        )
+
+
         print(f"our data len: {len(data_df)}")
+
+
+        headers = ['success_rate']
+
+
+        averaged_df = time_averaged(data_df, headers)
+
+
+        fig, axs = plt.subplots(len(headers), 1, figsize=(10, 4 * len(headers)), sharex=True)
+
+        for i, col in enumerate(headers):
+            axs[i].plot(averaged_df.index, averaged_df[col], '-', linewidth=2)
+            axs[i].set_title(f"{col.replace('_', ' ').title()} over Time")
+            axs[i].set_ylabel(col.replace('_', ' ').title())
+            axs[i].grid(True, linestyle='--', alpha=0.7)
+
+        axs[-1].set_xlabel("Time (1ms intervals)")
+        plt.xticks(rotation=90)
+        plt.tight_layout()
+        plt.savefig('resting')
+        return
 
         # Running max for 
         running_max = []
@@ -299,17 +546,29 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
                     plot_index += 1
 
         # Plot 2: Fail rate
-        rates, rates_inds = fail_rate_calc(data_df, x_val_amount, x_val_amount)
-        ticks = [i / 20 for i in range(1, 21)]  # 0.05 to 1.00
-        axs[plot_index].set_yticks(ticks)
-        axs[plot_index].set_yticklabels([f'{t:.2f}' for t in ticks])  # Format as 0.05, 0.10, ...
+        # rates, rates_inds = fail_rate_calc(data_df, x_val_amount, x_val_amount)
+        # ticks = [i / 20 for i in range(1, 21)]  # 0.05 to 1.00
+        # axs[plot_index].set_yticks(ticks)
+        # axs[plot_index].set_yticklabels([f'{t:.2f}' for t in ticks])  # Format as 0.05, 0.10, ...
 
-        axs[plot_index].plot(rates_inds, rates, '-', linewidth=2, color='green')
+        # axs[plot_index].plot(rates_inds, rates, '-', linewidth=2, color='green')
+        # axs[plot_index].set_title('Success Rate over Iterations')
+        # axs[plot_index].set_xlabel('Iteration')
+        # axs[plot_index].set_ylabel('Success Rate')
+        # axs[plot_index].grid(True, linestyle='--', alpha=0.7)
+        
+        # plot_index += 1
+
+        # temp plot, new failrate
+        sucess_x, success_y = interpolate_threads_time(data_df, 'success_rate')
+
+        axs[plot_index].plot(sucess_x, success_y, '-', linewidth=2, color='green')
         axs[plot_index].set_title('Success Rate over Iterations')
         axs[plot_index].set_xlabel('Iteration')
         axs[plot_index].set_ylabel('Success Rate')
         axs[plot_index].grid(True, linestyle='--', alpha=0.7)
         
+
         plot_index += 1
 
 
@@ -375,22 +634,22 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
 
 
 
-        # Date
-        date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") 
-        
-        # Save plot inside /plots/plt_name-date.png
-        os.makedirs("plots", exist_ok=True)
+    # Date
+    date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") 
+    
+    # Save plot inside /plots/plt_name-date.png
+    os.makedirs("plots", exist_ok=True)
 
-        # Save plot
-        plot_dir = os.path.join("plots", f"{plot_name}_{date}.png")
+    # Save plot
+    plot_dir = os.path.join("plots", f"{plot_name}_{date}.png")
 
-        print(f"saved plot to:{plot_name}_{date}.png")
+    print(f"saved plot to:{plot_name}_{date}.png")
 
-        # Final adjustments and save
-        plt.tight_layout()
+    # Final adjustments and save
+    plt.tight_layout()
 
-        plt.savefig(plot_dir)
-        plt.close()
+    # plt.savefig(plot_dir)
+    plt.close()
 
 
 
