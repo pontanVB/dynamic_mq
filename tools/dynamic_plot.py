@@ -306,7 +306,7 @@ def thread_averaged(df: pd.DataFrame, headers, time_sample=1):
 
 
 
-def process_files(log_file, rank_file, plot_name, window_size, window_step):
+def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=50):
     """Function to process the input files using pandas."""
 
     x_val_amount = 0
@@ -352,17 +352,11 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
     data_df.to_csv('debug_csv.csv')
 
     
-    # Time interval for displaying plots in ms
-    time_interval = 25
-
-    # Time interval for granularity
-    time_sample = 2
-
     # Headers to plot
     headers = []
 
     
-    # Calculate a dataFrame with thread averages and percentiles for these headers
+    # Calculate a dataFrame with thread average on each timepoint
     thread_headers = ['success_rate', 'stickiness']
     thread_averaged_df = thread_averaged(data_df, thread_headers, time_sample)
     thread_averaged_df = thread_averaged_df.groupby('time').mean() 
@@ -386,39 +380,40 @@ def process_files(log_file, rank_file, plot_name, window_size, window_step):
     data_df.index = pd.to_datetime(data_df.index)
     troughput_index = 1
     throughput = data_df.resample(f'{time_sample}ms').size()
-    headers.insert(troughput_index, 'troughput')
-    fig, axs = plt.subplots(len(headers), 1, figsize=(10, 4 * len(headers)), sharex=True)
+
     
 
 
-
-
-    colors = ['red', 'green', 'blue']
+    # Ordering of plots
+    headers = ['active_threads', 'success_rate', 'stickiness', 'troughput','rank_error', 'delay']
+    fig, axs = plt.subplots(len(headers), 1, figsize=(10, 4 * len(headers)), sharex=True)
 
     # Plotting averages and percentiles
 
     for i, header in enumerate(headers):
         if header == 'troughput':
-            axs[i].plot(times, throughput, '-', linewidth=2, color='darkgreen', label='temp')
+            axs[i].plot(times, throughput, '-', linewidth=2, color='darkblue', label='temp')
         elif header in ['success_rate', 'stickiness']:
             axs[i].plot(times, thread_averaged_df[header], '-', linewidth=2, color='darkgreen', label='thread_average')
             # axs[i].plot(times, thread_averaged_df_25[header], '-', linewidth=2, color='purple', label='100%')
-        elif i >= 3:
+        elif header in ['rank_error', 'delay']:
             axs[i].plot(times, averaged_df[f"{header}_mean"], '-', linewidth=2, color='orange', label='mean')
             axs[i].plot(times, averaged_df[f"{header}_p25"], '--', linewidth=1, color='red', label='25%')
             axs[i].plot(times, averaged_df[f"{header}_p50"], '--', linewidth=1, color='blue', label='50%')
             axs[i].plot(times, averaged_df[f"{header}_p75"], '--', linewidth=1, color='green', label='75%')
             axs[i].plot(times, averaged_df[f"{header}_p100"], '--', linewidth=1, color='purple', label='100%')
-        else:
-            axs[i].plot(times, averaged_df[f"{header}_mean"], '-', linewidth=2, color=colors[i], label='mean')
+            axs[i].legend()
+        elif header == 'active_threads':
+            axs[i].plot(times, averaged_df[f"{header}_mean"], '-', linewidth=2, color='blue', label='mean')
 
 
         axs[i].set_title(f"{header.replace('_', ' ').title()} Over Time")
         axs[i].set_ylabel(header.replace('_', ' ').title())
         axs[i].grid(True, linestyle='--', alpha=0.7)
-        axs[i].legend()
     
-    axs[troughput_index].set_title("Throughput Over Time")
+
+    # axs[troughput_index].set_title("Throughput Over Time")
+    troughput_index = headers.index('troughput')
     axs[troughput_index].set_ylabel(f"Elements per {time_sample} (ms)")
     
     axs[-1].set_xlabel("Time (ms)")
@@ -661,14 +656,14 @@ def main():
     parser.add_argument('-r', type=str, required=False, help="Path to the rank error file.")
     parser.add_argument('-l', type=str, required=False, help="Path to the dynamic logging.")
     parser.add_argument('-p', type=str, required=True, help="Plot name.")
-    parser.add_argument('-w', type=int, required=True, help="Window size.")
-    parser.add_argument('-ws', type=int, required=False, help="Window Step.")
+    parser.add_argument('-ts', type=int, required=False, help="Time sample (ms).")
+    parser.add_argument('-ti', type=int, required=False, help="Time interval (ms).")
 
     
     args = parser.parse_args()
     
     # Call processing function with arguments
-    process_files(args.l, args.r, args.p, args.w, args.ws)
+    process_files(args.l, args.r, args.p, args.ts, args.ti)
 
 if __name__ == "__main__":
     main()
