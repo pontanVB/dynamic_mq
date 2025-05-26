@@ -543,10 +543,10 @@ class Context : public thread_coordination::Context {
             this->thread_data_.thread_intervals.front().first
         });
         this->handle_.reset_lock_fails();
-        #endif
         return retval;
+        #endif
     }
-#else
+    #else
     void push(std::pair<key_type, value_type> const& e) {
         handle_.push(e);
     }
@@ -555,6 +555,12 @@ class Context : public thread_coordination::Context {
         return handle_.try_pop();
     }
 #endif
+
+    #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+    void reset_lock_fails(){
+        handle_.reset_lock_fails();
+    }
+    #endif
 
     ThreadData& thread_data() noexcept {
         return thread_data_;
@@ -800,6 +806,7 @@ void benchmark_thread(Context context) {
         context.shared_data().start_time = std::chrono::high_resolution_clock::now();
     }
     context.synchronize();
+    context.reset_lock_fails();
     work_loop(context);
     context.synchronize();
     if (context.id() == 0) {
