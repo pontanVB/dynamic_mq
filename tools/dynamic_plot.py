@@ -282,7 +282,7 @@ def thread_averaged(df: pd.DataFrame, headers, time_sample=1):
     if not valid_headers:
         print("None of the provided headers exist in the DataFrame")
         return
-
+    print(valid_headers)
     # df = df.set_index('tick')
     # df.index = pd.to_datetime(df.index)
 
@@ -302,6 +302,30 @@ def thread_averaged(df: pd.DataFrame, headers, time_sample=1):
     # Set time as index and return
     thread_list.index.name = 'time'
     return thread_list
+
+
+
+def thread_contention(df: pd.DataFrame, time_sample=1):
+    grouped = df.groupby('thread_id')
+    thread_data = {}
+
+    for thread_id, group in grouped:
+        resampled = group.resample(f'{time_sample}ms')['lock_fails']
+        lock_fails_sum = resampled.sum()
+        elements = resampled.count()
+
+        success_rate = 2 * elements / (2 * elements + lock_fails_sum)
+
+        # Put success_rate in a DataFrame and add thread_id column
+        stats = success_rate.to_frame(name='success_rate')
+        stats['thread_id'] = thread_id
+
+        thread_data[thread_id] = stats
+
+    thread_list = pd.concat(thread_data.values())
+    thread_list.index.name = 'time'
+    return thread_list
+
 
 
 
@@ -348,7 +372,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     data_df.index = pd.to_datetime(data_df.index)
     resampled_df = data_df.resample(f'{time_sample}ms')
     elements_per_sample = resampled_df.size()
-    # data_df['success_rate'] = 2 / (data_df['lock_fails'] + 2)
+    data_df['success_rate'] = 2 / (data_df['lock_fails'] + 2)
     # data_df['success_rate'] = data_df['success_rate'].where(data_df['success_rate'] > 1e-3, 0.0)
 
 
@@ -360,21 +384,27 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     headers = []
 
     
-    # Calculate a dataFrame with thread average on each timepoint
-    thread_headers = ['stickiness']
-    thread_averaged_df = thread_averaged(data_df, thread_headers, time_sample)
-
-    # Debug new thread csv
-    thread_averaged_df.to_csv('thread_averaged.csv')
+    thread_averaged_headers = ['stickiness', 'success_rate']
+    # Calculate a dataFrame with per thread average on each timepoint
+    thread_averaged_df = thread_averaged(data_df, thread_averaged_headers, time_sample)
 
     # For each thread at each time, take the resapled lock_fails and sum across threads
     #thread_averaged_df = thread_averaged_df.groupby('time')
-    stickiness_medians = thread_averaged_df.groupby('time').median()
-    stickiness_mins = thread_averaged_df.groupby('time').min()
-    stickiness_max = thread_averaged_df.groupby('time').max()
+    thread_averaged_medians = thread_averaged_df.groupby('time').median()
+    thread_averaged_mins = thread_averaged_df.groupby('time').min()
+    thread_averaged_max = thread_averaged_df.groupby('time').max()
 
+    # Per/tread contention
+    contention_df = thread_contention(data_df, time_sample)
+    thread_contention_average = contention_df.groupby('time').mean()
+    thread_contention_mins = contention_df.groupby('time').min()
+    thread_contention_max = contention_df.groupby('time').max()
 
-    # Success rate calc.groupby('time')
+    # Debug csv
+    contention_df.to_csv('thread_averaged.csv')
+    
+
+    # Success rate calc.groupby('time') -- Correct value, the contentnion mean should be the same
     sampled_fails = resampled_df['lock_fails'].sum()
     success_rate = (elements_per_sample * 2) / (elements_per_sample * 2 + sampled_fails)
 
@@ -399,7 +429,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
 
     # Ordering of plots
-    headers = ['active_threads', 'success_rate', 'stickiness', 'troughput','rank_error', 'delay']
+    headers = ['active_threads', 'success_rate', 'stickiness', 'troughput', 'rank_error', 'delay']
     fig, axs = plt.subplots(len(headers), 1, figsize=(10, 4 * len(headers)), sharex=True)
 
     # Plotting averages and percentiles
@@ -408,11 +438,14 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         if header == 'troughput':
             axs[i].plot(times, throughput, '-', linewidth=2, color='darkblue', label='temp')
         elif header in ['success_rate']:
-            axs[i].plot(times, success_rate, '-', linewidth=2, color='darkgreen', label='thread_average')
+            axs[i].plot(times, thread_contention_average[header], '-', linewidth=2, color='darkgreen', label='average')
+            axs[i].plot(times, thread_contention_mins[header], '--', linewidth=1, color='darkred', label='min')
+            axs[i].plot(times, thread_contention_max[header], '--', linewidth=1, color='purple', label='max')
+            axs[i].legend()
         elif header in ['stickiness']:
-            axs[i].plot(times, stickiness_medians[header], '-', linewidth=2, color='darkgreen', label='median')
-            axs[i].plot(times, stickiness_mins[header]   , '--', linewidth=1, color='red', label='min')
-            axs[i].plot(times, stickiness_max[header]    , '--', linewidth=1, color='purple', label='max')
+            axs[i].plot(times, thread_averaged_medians[header], '-', linewidth=2, color='darkgreen', label='median')
+            axs[i].plot(times, thread_averaged_mins[header]   , '--', linewidth=1, color='red', label='min')
+            axs[i].plot(times, thread_averaged_max[header]    , '--', linewidth=1, color='purple', label='max')
             axs[i].legend()
         elif header in ['rank_error', 'delay']:
             axs[i].plot(times, averaged_df[f"{header}_mean"], '-', linewidth=2, color='orange', label='mean')
@@ -423,6 +456,9 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
             axs[i].legend()
         elif header == 'active_threads':
             axs[i].plot(times, averaged_df[f"{header}_mean"], '-', linewidth=2, color='blue', label='mean')
+        elif header == 'all_threads':
+            for thread_id, group in contention_df.groupby('thread_id'):
+                plt.plot(times, group['success_rate'], label=f'Thread {int(thread_id)}')
 
 
         axs[i].set_title(f"{header.replace('_', ' ').title()} Over Time")
