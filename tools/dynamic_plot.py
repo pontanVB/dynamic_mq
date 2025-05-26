@@ -254,8 +254,8 @@ def time_averaged(df: pd.DataFrame, headers, time_sample=1):
         print("None of the provided headers exist in the DataFrame")
         return
 
-    df = df.set_index('tick')
-    df.index = pd.to_datetime(df.index)
+    # df = df.set_index('tick')
+    # df.index = pd.to_datetime(df.index)
 
     # Resample once
     resampled = df.resample(f'{time_sample}ms')[valid_headers]
@@ -283,8 +283,8 @@ def thread_averaged(df: pd.DataFrame, headers, time_sample=1):
         print("None of the provided headers exist in the DataFrame")
         return
 
-    df = df.set_index('tick')
-    df.index = pd.to_datetime(df.index)
+    # df = df.set_index('tick')
+    # df.index = pd.to_datetime(df.index)
 
     # Group by thread and then resample per time window
     grouped = df.groupby('thread_id')
@@ -343,12 +343,16 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         data_df = (pd.concat([data_df, rank_error_df], axis=1))
 
 
-    # Adding new columns
-    data_df['success_rate'] = 2 / (data_df['lock_fails'] + 2)
+    # Adding index and sampling
+    data_df = data_df.set_index('tick')
+    data_df.index = pd.to_datetime(data_df.index)
+    resampled_df = data_df.resample(f'{time_sample}ms')
+    elements_per_sample = resampled_df.size()
+    # data_df['success_rate'] = 2 / (data_df['lock_fails'] + 2)
     # data_df['success_rate'] = data_df['success_rate'].where(data_df['success_rate'] > 1e-3, 0.0)
 
 
-    # File with new fields
+    # Debug file
     data_df.to_csv('debug_csv.csv')
 
     
@@ -357,13 +361,26 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
     
     # Calculate a dataFrame with thread average on each timepoint
-    thread_headers = ['success_rate', 'stickiness']
+    thread_headers = ['stickiness']
     thread_averaged_df = thread_averaged(data_df, thread_headers, time_sample)
-    thread_averaged_df = thread_averaged_df.groupby('time').mean() 
-    headers.extend(thread_headers)
 
-    # Debug csv
+    # Debug new thread csv
     thread_averaged_df.to_csv('thread_averaged.csv')
+
+    # For each thread at each time, take the resapled lock_fails and sum across threads
+    #thread_averaged_df = thread_averaged_df.groupby('time')
+    stickiness_medians = thread_averaged_df.groupby('time').median()
+    stickiness_mins = thread_averaged_df.groupby('time').min()
+    stickiness_max = thread_averaged_df.groupby('time').max()
+
+
+    # Success rate calc.groupby('time')
+    sampled_fails = resampled_df['lock_fails'].sum()
+    success_rate = (elements_per_sample * 2) / (elements_per_sample * 2 + sampled_fails)
+
+
+    # Thread "averaged" plotting
+    headers.extend(['sucess_rate', 'stickiness'])
 
     # Calculate a dataFrame with element averages and percentiles for these headers
     system_headers = ['active_threads', 'rank_error', 'delay']
@@ -375,11 +392,8 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         axs = [axs]
 
 
-    #Adding Troughput (some redundant code can be moved from 'time averaged' to above the function call as index is needed here)
-    data_df = data_df.set_index('tick')
-    data_df.index = pd.to_datetime(data_df.index)
-    troughput_index = 1
-    throughput = data_df.resample(f'{time_sample}ms').size()
+    # Adding Troughput
+    throughput = elements_per_sample * (1000 / time_sample)
 
     
 
@@ -393,9 +407,13 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     for i, header in enumerate(headers):
         if header == 'troughput':
             axs[i].plot(times, throughput, '-', linewidth=2, color='darkblue', label='temp')
-        elif header in ['success_rate', 'stickiness']:
-            axs[i].plot(times, thread_averaged_df[header], '-', linewidth=2, color='darkgreen', label='thread_average')
-            # axs[i].plot(times, thread_averaged_df_25[header], '-', linewidth=2, color='purple', label='100%')
+        elif header in ['success_rate']:
+            axs[i].plot(times, success_rate, '-', linewidth=2, color='darkgreen', label='thread_average')
+        elif header in ['stickiness']:
+            axs[i].plot(times, stickiness_medians[header], '-', linewidth=2, color='darkgreen', label='median')
+            axs[i].plot(times, stickiness_mins[header]   , '--', linewidth=1, color='red', label='min')
+            axs[i].plot(times, stickiness_max[header]    , '--', linewidth=1, color='purple', label='max')
+            axs[i].legend()
         elif header in ['rank_error', 'delay']:
             axs[i].plot(times, averaged_df[f"{header}_mean"], '-', linewidth=2, color='orange', label='mean')
             axs[i].plot(times, averaged_df[f"{header}_p25"], '--', linewidth=1, color='red', label='25%')
@@ -414,7 +432,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
     # axs[troughput_index].set_title("Throughput Over Time")
     troughput_index = headers.index('troughput')
-    axs[troughput_index].set_ylabel(f"Elements per {time_sample} (ms)")
+    axs[troughput_index].set_ylabel(f"Elements / s")
     
     axs[-1].set_xlabel("Time (ms)")
     axs[-1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervalms
