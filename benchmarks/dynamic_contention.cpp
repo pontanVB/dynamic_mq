@@ -68,6 +68,7 @@ struct Settings {
     int affinity = 6;
     int timeout_s = 0;
     int sleep_us = 0;
+    double delay_variation = 0.5;
     std::deque<ThreadInterval> thread_intervals;
     std::filesystem::path interval_file = "thread_intervals.txt";
 #ifdef LOG_OPERATIONS
@@ -127,6 +128,7 @@ void register_cmd_options(Settings& settings, cxxopts::Options& cmd) {
                 , cxxopts::value<int>(settings.affinity), "NUMBER")
             ("t,timeout", "Timeout in seconds", cxxopts::value<int>(settings.timeout_s), "NUMBER")
             ("q,sleep", "Time in microseconds to wait between operations", cxxopts::value<int>(settings.sleep_us), "NUMBER")
+            ("d,delay-variation", "Factor for randomized deviation from given delay", cxxopts::value<double>(settings.delay_variation), "NUMBER")
             ("i,thread-interval-file", "File to read thread intervals from", cxxopts::value<std::filesystem::path>(settings.interval_file), "PATH")
 #ifdef LOG_OPERATIONS
             ("l,log-file", "File to write the operation log to", cxxopts::value<std::filesystem::path>(settings.log_file), "PATH")
@@ -191,6 +193,10 @@ bool validate_settings(Settings const& settings) {
     }
     if (settings.seed <= 0) {
         std::cerr << "Error: Seed must be greater than 0\n";
+        return false;
+    }
+    if (settings.delay_variation < 0 || settings.delay_variation > 1) {
+        std::cerr << "Error: Delay variation must be between 0 and 1\n";
         return false;
     }
     for (auto const& interval: settings.thread_intervals) {
@@ -281,6 +287,7 @@ void write_settings_human_readable(Settings const& settings, std::ostream& out) 
     } else {
         out << settings.sleep_us << " us\n";
     }
+    out << "Delay variation: " << settings.delay_variation << '\n';
     out << "Thread intervals (threads, delay, duration): ";
     for (size_t i = 0; i < settings.thread_intervals.size(); ++i) {
         out << "(" << settings.thread_intervals[i].active_threads << ", " 
@@ -322,6 +329,7 @@ void write_settings_json(Settings const& settings, std::ostream& out) {
     out << std::quoted("affinity") << ':' << settings.affinity << ',';
     out << std::quoted("timeout_s") << ':' << settings.timeout_s << ',';
     out << std::quoted("sleep_us") << ':' << settings.sleep_us << ',';
+    out << std::quoted("delay_variation") << ':' << settings.delay_variation << ',';
     out << std::quoted("thread_intervals") << ':';
     out << '[';
     for (std::size_t i = 0; i < settings.thread_intervals.size(); ++i) {
@@ -694,6 +702,26 @@ bool process_intervals(Context& context,
     return false;
 }
 
+// Returns a randomized delay as nanoseconds, with fractional variation.
+std::chrono::nanoseconds randomized_delay(std::chrono::microseconds delay_us, 
+                                          double variation_factor, int seed, int thread_id) {
+    // Create randomizer.                                        
+    std::seed_seq seed_seq{seed, thread_id};
+    std::default_random_engine rng(seed_seq);
+
+    // Define range.
+    double min_multiplier = 1.0 - variation_factor;
+    double max_multiplier = 1.0 + variation_factor;
+    std::uniform_real_distribution<double> dist(min_multiplier, max_multiplier);
+
+    // Randomize delay.
+    double delay_ns = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(delay_us).count());
+    double randomized_delay = delay_ns * dist(rng);
+
+    // Round to nearest nanosecond.
+    return std::chrono::nanoseconds(static_cast<int64_t>(randomized_delay + 0.5));
+}
+
 
 [[gnu::noinline]] void work_loop(Context& context) {
     auto offset = static_cast<value_type>(context.settings().num_threads * context.settings().prefill_per_thread);
@@ -702,6 +730,9 @@ bool process_intervals(Context& context,
     context.thread_data().thread_intervals = context.settings().thread_intervals;
     auto& thread_intervals = context.thread_data().thread_intervals;
 
+    std::deque<std::chrono::nanoseconds> delays;
+    std::chrono::nanoseconds delay;
+
     std::deque<std::chrono::high_resolution_clock::time_point> interval_times;
     std::chrono::high_resolution_clock::time_point interval_end = context.shared_data().start_time;
     // Make timeout a time point.
@@ -709,17 +740,20 @@ bool process_intervals(Context& context,
     if (context.settings().timeout_s != 0) {
         timeout = context.shared_data().start_time + std::chrono::seconds(context.settings().timeout_s);
     }
-    // Calculate time points of interval transitions.
+    // Calculate time points of interval transitions and operation delays.
     for (ThreadInterval interval : thread_intervals) {
         interval_end += interval.duration;
         interval_times.emplace_back(interval_end);
+        delay = randomized_delay(interval.delay, context.settings().delay_variation,
+                                 context.settings().seed, context.id());
+        delays.emplace_back(delay);
     }
-
     // Sleep if this thread should be inactive from the beginning.
     // Exit if intervals are over or if timeout is reached.
     if (process_intervals(context, thread_intervals, interval_times, timeout)) {
         return;
     }
+
     // Loop through all work in batches.
     for (auto from = context.shared_data().counter.fetch_add(context.settings().batch_size, std::memory_order_relaxed);
          from < max;
@@ -735,9 +769,8 @@ bool process_intervals(Context& context,
 
             while (true) {
                 if (auto e = context.try_pop(); e) {
-                    if (thread_intervals.front().delay != std::chrono::microseconds(0)) {
-                        auto sleep_until = std::chrono::high_resolution_clock::now() +
-                            std::chrono::microseconds{thread_intervals.front().delay};
+                    if (delays.front() != std::chrono::nanoseconds(0)) {
+                        auto sleep_until = std::chrono::high_resolution_clock::now() + delays.front();
                         while (std::chrono::high_resolution_clock::now() < sleep_until) {
                             PAUSE;
                         }
@@ -757,6 +790,7 @@ bool process_intervals(Context& context,
         // Finish if the interval is over.
         if (std::chrono::high_resolution_clock::now() >= interval_times.front()) {
             interval_times.pop_front();
+            delays.pop_front();
             thread_intervals.pop_front();
         }
         // Sleep if this thread should be inactive.
