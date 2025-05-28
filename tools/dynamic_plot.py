@@ -146,7 +146,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
 
     # Debug file
-    data_df.to_csv('debug_csv.csv')
+    # data_df.to_csv('debug_csv.csv')
 
     
     # Headers to plot
@@ -170,7 +170,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     thread_contention_max = contention_df.groupby('time').max()
 
     # Debug csv
-    contention_df.to_csv('thread_averaged.csv')
+    # contention_df.to_csv('thread_averaged.csv')
     
 
     # Success rate calc.groupby('time') -- Correct value, the contentnion mean should be the same
