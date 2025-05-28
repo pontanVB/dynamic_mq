@@ -46,6 +46,13 @@ using value_type = unsigned long;
 using pq_type = PQ<true, key_type, value_type>;
 using handle_type = pq_type::handle_type;
 
+
+struct ThreadInterval {
+    int active_threads;
+    std::chrono::microseconds delay;
+    std::chrono::milliseconds duration;
+};
+
 // TODO - Change settings into file format?
 
 struct Settings {
@@ -61,7 +68,7 @@ struct Settings {
     int affinity = 6;
     int timeout_s = 0;
     int sleep_us = 0;
-    std::deque<std::pair<int,std::chrono::milliseconds>> thread_intervals;
+    std::deque<ThreadInterval> thread_intervals;
     std::filesystem::path interval_file = "thread_intervals.txt";
 #ifdef LOG_OPERATIONS
     std::filesystem::path log_file = "operation_log.txt";
@@ -79,14 +86,18 @@ void read_thread_intervals(Settings& settings) {
     std::string line;
 
     while (std::getline(file, line)) {
-        int active_threads;
-        int duration;
-        char comma;
+        int active_threads, delay, duration;
+        char comma1, comma2;
 
         std::stringstream ss(line);
 
-        if (ss >> active_threads >> comma >> duration && comma == ',') {
-            settings.thread_intervals.emplace_back(active_threads, std::chrono::milliseconds(duration));
+        if (ss >> active_threads >> comma1 >> delay >> comma2 >> duration 
+            && comma1 == ',' && comma2 == ',') {
+            settings.thread_intervals.emplace_back(ThreadInterval {
+                active_threads, 
+                std::chrono::microseconds(delay), 
+                std::chrono::milliseconds(duration)
+            });
         } else {
             std::cerr << "Wrong thread_intervals line format: " << line << std::endl;
         }
@@ -182,13 +193,17 @@ bool validate_settings(Settings const& settings) {
         std::cerr << "Error: Seed must be greater than 0\n";
         return false;
     }
-    for (auto const& e: settings.thread_intervals) {
-        if (e.first < 0) {
+    for (auto const& interval: settings.thread_intervals) {
+        if (interval.active_threads < 0) {
             std::cerr << "Error: Active threads must be at least 0\n";
             return false;
         }
-        if (e.second <= std::chrono::milliseconds(0)) {
-            std::cerr << "Error: Contention interval must be greater than 0\n";
+        if (interval.delay < std::chrono::microseconds(0)) {
+            std::cerr << "Error: Operation delay must be nonnegative\n";
+            return false;
+        }
+        if (interval.duration <= std::chrono::milliseconds(0)) {
+            std::cerr << "Error: Contention-interval duration must be greater than 0\n";
             return false;
         }
     }
@@ -266,10 +281,11 @@ void write_settings_human_readable(Settings const& settings, std::ostream& out) 
     } else {
         out << settings.sleep_us << " us\n";
     }
-    out << "Thread intervals (nr, time): ";
+    out << "Thread intervals (threads, delay, duration): ";
     for (size_t i = 0; i < settings.thread_intervals.size(); ++i) {
-        out << "(" << settings.thread_intervals[i].first << ", " 
-            << settings.thread_intervals[i].second.count() << " ms)";
+        out << "(" << settings.thread_intervals[i].active_threads << ", " 
+            << settings.thread_intervals[i].delay.count() << " us, "
+            << settings.thread_intervals[i].duration.count() << " ms)";
         if (i != settings.thread_intervals.size() - 1) {
             out << ", ";
         }
@@ -310,8 +326,9 @@ void write_settings_json(Settings const& settings, std::ostream& out) {
     out << '[';
     for (std::size_t i = 0; i < settings.thread_intervals.size(); ++i) {
         out << '{';
-        out << std::quoted("active_threads") << ':' << settings.thread_intervals[i].first << ',';
-        out << std::quoted("duration") << ':' << settings.thread_intervals[i].second.count();
+        out << std::quoted("active_threads") << ':' << settings.thread_intervals[i].active_threads << ',';
+        out << std::quoted("delay") << ':' << settings.thread_intervals[i].delay.count() << ',';
+        out << std::quoted("duration") << ':' << settings.thread_intervals[i].duration.count();
         out << '}';
         if (i != settings.thread_intervals.size() - 1) {
             out << ',';
@@ -338,7 +355,7 @@ struct ThreadData {
     long long iter_count = 0;
     long long failed_pop_count = 0;
 
-    std::deque<std::pair<int,std::chrono::milliseconds>> thread_intervals;
+    std::deque<ThreadInterval> thread_intervals;
 
 
     //Interval data (There's probably a more convenient way to do this)
@@ -456,7 +473,7 @@ void write_log_metrics(std::vector<ThreadData> const& thread_data, std::ostream&
         metrics.insert(metrics.end(), e.metrics.begin(), e.metrics.end());
     }
     std::sort(metrics.begin(), metrics.end(), [](auto const& lhs, auto const& rhs) { return lhs.tick < rhs.tick; });
-    out << "tick,stickiness,thread_id,total_iterations,lock_fails,active_threads\n";
+    out << "tick,stickiness,thread_id,total_iterations,lock_fails,active_threads\n"; // ADD DELAY MEASUREMENT TOO?
     for (auto const& metric : metrics) {
         out << metric.tick.time_since_epoch().count() << ',' 
             << metric.stickiness << ',' 
@@ -540,7 +557,7 @@ class Context : public thread_coordination::Context {
             this->id(), 
             this->thread_data_.iter_count, 
             this->handle_.get_lock_fails(), 
-            this->thread_data_.thread_intervals.front().first
+            this->thread_data_.thread_intervals.front().active_threads
         });
         this->handle_.reset_lock_fails();
         return retval;
@@ -611,32 +628,56 @@ void print_interval_times(const Context& context,
     std::clog << "]\n";
 }
 
+// void print_thread_intervals(const Context& context, 
+//     const std::deque<std::pair<int, std::chrono::milliseconds>>& thread_intervals) {
+//     auto current_thread_id = context.id(); // Use context.id() to get thread ID
+
+//     std::clog << "Thread ID " << current_thread_id << " - thread_intervals: [";
+//     bool first = true;
+//     for (const auto& [thread_id, duration] : thread_intervals) {
+//         if (!first) std::clog << ", ";
+//         else first = false;
+
+//         // Convert duration to milliseconds and print
+//         auto seconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+//         std::clog << "(" << thread_id << ", " << seconds << "s)";
+//     }
+//     std::clog << "]\n";
+// }
+
 void print_thread_intervals(const Context& context, 
-    const std::deque<std::pair<int, std::chrono::milliseconds>>& thread_intervals) {
+                            const std::deque<ThreadInterval>& thread_intervals) {
     auto current_thread_id = context.id(); // Use context.id() to get thread ID
 
     std::clog << "Thread ID " << current_thread_id << " - thread_intervals: [";
-    bool first = true;
-    for (const auto& [thread_id, duration] : thread_intervals) {
-        if (!first) std::clog << ", ";
-        else first = false;
 
-        // Convert duration to milliseconds and print
-        auto seconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-        std::clog << "(" << thread_id << ", " << seconds << "s)";
+    bool first = true;
+    for (const auto& interval : thread_intervals) {
+        if (!first) {
+            std::clog << ", ";
+        } else {
+            first = false;
+        }
+
+        std::clog << "("
+                  << interval.active_threads << " threads, "
+                  << interval.delay.count() << " us, "
+                  << interval.duration.count() << " ms)";
     }
+
     std::clog << "]\n";
 }
 
 // Process waiting during intervals and signal if work loop should be exited.
 bool process_intervals(Context& context, 
-                       std::deque<std::pair<int,std::chrono::milliseconds>>& thread_intervals,
+                       std::deque<ThreadInterval>& thread_intervals,
                        std::deque<std::chrono::high_resolution_clock::time_point>& interval_times,
                        std::chrono::high_resolution_clock::time_point& timeout) {
     if (thread_intervals.empty()) {
         return true;
     }
-    while (context.id() >= thread_intervals.front().first) {
+
+    while (context.id() >= thread_intervals.front().active_threads) {
         if (will_hit_timeout(timeout, interval_times.front())) {
             std::this_thread::sleep_until(timeout);
             return true;
@@ -644,6 +685,7 @@ bool process_intervals(Context& context,
 
         std::this_thread::sleep_until(interval_times.front());
         interval_times.pop_front();
+
         thread_intervals.pop_front();
         if (thread_intervals.empty()) {
             return true;
@@ -652,13 +694,14 @@ bool process_intervals(Context& context,
     return false;
 }
 
+
 [[gnu::noinline]] void work_loop(Context& context) {
     auto offset = static_cast<value_type>(context.settings().num_threads * context.settings().prefill_per_thread);
     long long max = context.settings().iterations_per_thread * context.settings().num_threads;
 
     context.thread_data().thread_intervals = context.settings().thread_intervals;
-
     auto& thread_intervals = context.thread_data().thread_intervals;
+
     std::deque<std::chrono::high_resolution_clock::time_point> interval_times;
     std::chrono::high_resolution_clock::time_point interval_end = context.shared_data().start_time;
     // Make timeout a time point.
@@ -667,8 +710,8 @@ bool process_intervals(Context& context,
         timeout = context.shared_data().start_time + std::chrono::seconds(context.settings().timeout_s);
     }
     // Calculate time points of interval transitions.
-    for (std::pair<int,std::chrono::milliseconds> interval : thread_intervals) {
-        interval_end += interval.second;
+    for (ThreadInterval interval : thread_intervals) {
+        interval_end += interval.duration;
         interval_times.emplace_back(interval_end);
     }
 
@@ -692,9 +735,9 @@ bool process_intervals(Context& context,
 
             while (true) {
                 if (auto e = context.try_pop(); e) {
-                    if (context.settings().sleep_us != 0) {
+                    if (thread_intervals.front().delay != std::chrono::microseconds(0)) {
                         auto sleep_until = std::chrono::high_resolution_clock::now() +
-                            std::chrono::microseconds{context.settings().sleep_us};
+                            std::chrono::microseconds{thread_intervals.front().delay};
                         while (std::chrono::high_resolution_clock::now() < sleep_until) {
                             PAUSE;
                         }
