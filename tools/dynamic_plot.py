@@ -222,7 +222,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         axs[1,1].plot(thread_rel_times, group['success_rate'], '-', label=f'Thread {int(thread_id)}', alpha=0.7)
 
     axs[1,1].set_title('Contention per thread')
-    axs[1,1].legend()
+    # axs[1,1].legend()
 
     # More y ticks if needed
     # for ax in axs[1]:  # second row
@@ -243,7 +243,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         axs[2,1].plot(thread_rel_times, group['stickiness'], '-', label=f'Thread {int(thread_id)}', alpha=0.7)
 
     axs[2,1].set_title('Stickiness per thread')
-    axs[2,1].legend()
+    # axs[2,1].legend()
 
     # Throughput
     axs[3,0].plot(times, throughput, '-', linewidth=2, color='darkblue', label='temp')
@@ -256,7 +256,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         axs[3,1].plot(thread_rel_times, group['throughput'], '-', label=f'Thread {int(thread_id)}', alpha=0.7)
         
     axs[3,1].set_title('Throughput per thread')
-    axs[3,1].legend()
+    # axs[3,1].legend()
 
     # Rank error
 
