@@ -585,6 +585,12 @@ class Context : public thread_coordination::Context {
     void reset_lock_fails(){
         handle_.reset_lock_fails();
     }
+    void reset_stick_factor(){
+        handle_.reset_stick_factor();
+    }
+    void set_stick_factor(){
+        handle_.set_stick_factor();
+    }
     #endif
 
     ThreadData& thread_data() noexcept {
@@ -824,6 +830,10 @@ int prepare_papi(Settings const& settings) {
 #endif
 
 void benchmark_thread(Context context) {
+// Disable dynamic behaviour
+#ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+    context.reset_stick_factor();
+#endif
 #ifdef WITH_PAPI
     int event_set = PAPI_NULL;
     if (!context.settings().papi_events.empty()) {
@@ -883,7 +893,13 @@ void benchmark_thread(Context context) {
         context.shared_data().start_time = std::chrono::high_resolution_clock::now();
     }
     context.synchronize();
+
+// Engage dynamic behavoiur and reset fail logging
+#ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
     context.reset_lock_fails();
+    context.set_stick_factor();
+#endif
+
     work_loop(context);
     context.synchronize();
     if (context.id() == 0) {
