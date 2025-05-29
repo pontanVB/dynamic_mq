@@ -51,6 +51,9 @@ class StickRandomDynamic {
     bool already_fetched = false;
 
     double dynamic_stickiness{};
+    double stick_factor_{};
+    double initial_stick_factor_{};
+    
 
     void refresh_pop_index(std::size_t num_pqs) noexcept {
         for (auto it = pop_index_.begin(); it != pop_index_.end(); ++it) {
@@ -62,6 +65,8 @@ class StickRandomDynamic {
 
    protected:
     explicit StickRandomDynamic(Config const& config, SharedData& shared_data) noexcept {
+        initial_stick_factor_ = config.stick_factor;
+        stick_factor_ = initial_stick_factor_;
         auto id = shared_data.id_count.fetch_add(1, std::memory_order_relaxed);
         auto seq = std::seed_seq{config.seed, id};
         rng_.seed(seq);
@@ -108,7 +113,7 @@ class StickRandomDynamic {
 
                 if (lock_balance >= ctx.config().upper_threshold) {
                     if (dynamic_stickiness > 1) {
-                        dynamic_stickiness = std::floor(dynamic_stickiness / ctx.config().stick_factor);
+                        dynamic_stickiness = std::floor(dynamic_stickiness / stick_factor_);
                     }
                     lock_balance = 0;
                 }
@@ -119,7 +124,7 @@ class StickRandomDynamic {
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
                     if (dynamic_stickiness < ctx.config().stickiness_cap){
-                    dynamic_stickiness = std::ceil(dynamic_stickiness * ctx.config().stick_factor);
+                    dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
                     }
                     lock_balance = 0;
                 }
@@ -156,7 +161,7 @@ class StickRandomDynamic {
                 lock_balance += ctx.config().reward;
                 if (lock_balance >= ctx.config().upper_threshold) {
                     if (dynamic_stickiness > 1) {
-                        dynamic_stickiness = std::floor(dynamic_stickiness / ctx.config().stick_factor);
+                        dynamic_stickiness = std::floor(dynamic_stickiness / stick_factor_);
                     }
                     lock_balance = 0;
                 }
@@ -167,7 +172,7 @@ class StickRandomDynamic {
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
                     if (dynamic_stickiness < ctx.config().stickiness_cap){
-                        dynamic_stickiness = std::ceil(dynamic_stickiness * ctx.config().stick_factor);
+                        dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
                     }
                     
                     lock_balance = 0;
@@ -190,6 +195,16 @@ class StickRandomDynamic {
     void reset_lock_fails(){
         lock_fail_count_ = 0;
     }
+
+    void reset_stick_factor(){
+        stick_factor_ = 1;
+    }
+
+    void set_stick_factor(){
+        stick_factor_ = initial_stick_factor_;
+
+    }
+
 
 };
 
