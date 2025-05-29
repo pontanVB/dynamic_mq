@@ -1,9 +1,0 @@
-{"settings":{"num_threads":4,"prefill_per_thread":1048576,"iterations_per_thread":16777216,"prefill_min":1,"prefill_max":1048576,"update_min":0,"update_max":1048576,"batch_size":4096,"seed":1,"affinity":6,"timeout_s":0,"sleep_us":0,"delay_variation":0.5,"thread_intervals":[{"active_threads":1,"delay":2,"duration":25},{"active_threads":2,"delay":0,"duration":25},{"active_threads":3,"delay":4,"duration":25},{"active_threads":4,"delay":0,"duration":25}],"papi_events":[],"pq":{"queue_factor":2,"seed":1,"stickiness":16,"stickiness_parameters":{"punishment":-2,"reward":1,"lower_threshold":-50,"upper_threshold":50}}},"results":{"time_ns":102232398,"thread_data":[{"iterations":106496,"failed_pops":0,"fail_data": [
-]
-,"papi_event_counter":[]},{"iterations":57344,"failed_pops":0,"fail_data": [
-]
-,"papi_event_counter":[]},{"iterations":61440,"failed_pops":0,"fail_data": [
-]
-,"papi_event_counter":[]},{"iterations":8192,"failed_pops":0,"fail_data": [
-]
-,"papi_event_counter":[]}]}}
