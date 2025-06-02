@@ -203,10 +203,16 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     fig, axs = plt.subplots(5, 2, figsize=(10, 15))  # adjust figsize as needed
 
     
-    # Activethreads
+    # Active threads
     axs[0,0].plot(times, averaged_df['active_threads_mean'], '-', linewidth=2, color='blue', label='mean')
     axs[0,0].set_title('Active Threads')
     axs[0,0].set_ylabel('Thread Count')
+
+    # Operation delay (benchmark)
+    axs[0,1].plot(times, [0] * len(times), '-', linewidth=2, color='blue', label='mean')
+    axs[0,1].set_title('Operation Delay')
+    axs[0,1].set_ylabel('Time (us)')
+
 
 
     # Contention
