@@ -364,7 +364,7 @@ struct ThreadData {
     long long failed_pop_count = 0;
 
     std::deque<ThreadInterval> thread_intervals;
-
+    std::deque<std::chrono::nanoseconds> delays;
 
     //Interval data (There's probably a more convenient way to do this)
     std::vector<std::pair<int,int>> fail_data;
@@ -392,6 +392,7 @@ struct ThreadData {
         long long total_iterations; // For throughput measurement, might tweak.
         int lock_fail_count;
         int active_threads;
+        std::chrono::nanoseconds delay;
         
     };
     std::vector<PushLog> pushes;
@@ -481,14 +482,15 @@ void write_log_metrics(std::vector<ThreadData> const& thread_data, std::ostream&
         metrics.insert(metrics.end(), e.metrics.begin(), e.metrics.end());
     }
     std::sort(metrics.begin(), metrics.end(), [](auto const& lhs, auto const& rhs) { return lhs.tick < rhs.tick; });
-    out << "tick,stickiness,thread_id,total_iterations,lock_fails,active_threads\n"; // ADD DELAY MEASUREMENT TOO?
+    out << "tick,stickiness,thread_id,total_iterations,lock_fails,active_threads,delay\n";
     for (auto const& metric : metrics) {
         out << metric.tick.time_since_epoch().count() << ',' 
             << metric.stickiness << ',' 
             << metric.thread_id << ',' 
             << metric.total_iterations << ','
             << metric.lock_fail_count << ','
-            << metric.active_threads
+            << metric.active_threads << ','
+            << metric.delay.count()
             << '\n';
     }
 }
@@ -565,7 +567,8 @@ class Context : public thread_coordination::Context {
             this->id(), 
             this->thread_data_.iter_count, 
             this->handle_.get_lock_fails(), 
-            this->thread_data_.thread_intervals.front().active_threads
+            this->thread_data_.thread_intervals.front().active_threads,
+            this->thread_data_.delays.front()
         });
         this->handle_.reset_lock_fails();
         return retval;
@@ -685,6 +688,7 @@ void print_thread_intervals(const Context& context,
 // Process waiting during intervals and signal if work loop should be exited.
 bool process_intervals(Context& context, 
                        std::deque<ThreadInterval>& thread_intervals,
+                       std::deque<std::chrono::nanoseconds>& delays,
                        std::deque<std::chrono::high_resolution_clock::time_point>& interval_times,
                        std::chrono::high_resolution_clock::time_point& timeout) {
     if (thread_intervals.empty()) {
@@ -699,7 +703,7 @@ bool process_intervals(Context& context,
 
         std::this_thread::sleep_until(interval_times.front());
         interval_times.pop_front();
-
+        delays.pop_front();
         thread_intervals.pop_front();
         if (thread_intervals.empty()) {
             return true;
@@ -736,7 +740,7 @@ std::chrono::nanoseconds randomized_delay(std::chrono::microseconds delay_us,
     context.thread_data().thread_intervals = context.settings().thread_intervals;
     auto& thread_intervals = context.thread_data().thread_intervals;
 
-    std::deque<std::chrono::nanoseconds> delays;
+    auto& delays = context.thread_data().delays;
     std::chrono::nanoseconds delay;
 
     std::deque<std::chrono::high_resolution_clock::time_point> interval_times;
@@ -754,9 +758,10 @@ std::chrono::nanoseconds randomized_delay(std::chrono::microseconds delay_us,
                                  context.settings().seed, context.id());
         delays.emplace_back(delay);
     }
+
     // Sleep if this thread should be inactive from the beginning.
     // Exit if intervals are over or if timeout is reached.
-    if (process_intervals(context, thread_intervals, interval_times, timeout)) {
+    if (process_intervals(context, thread_intervals, delays, interval_times, timeout)) {
         return;
     }
 
@@ -801,7 +806,7 @@ std::chrono::nanoseconds randomized_delay(std::chrono::microseconds delay_us,
         }
         // Sleep if this thread should be inactive.
         // Exit if intervals are over or if timeout is reached.
-        if (process_intervals(context, thread_intervals, interval_times, timeout)) {
+        if (process_intervals(context, thread_intervals, delays, interval_times, timeout)) {
             return;
         }
     }
