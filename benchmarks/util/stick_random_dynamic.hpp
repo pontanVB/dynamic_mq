@@ -23,7 +23,7 @@ class StickRandomDynamic {
    public:
     struct Config {
         int seed{1};
-        int stickiness{16};
+        int stickiness{1};
         int punishment{-2};
         int reward{1};
         int lower_threshold{-50};
