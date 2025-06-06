@@ -79,10 +79,11 @@ def thread_count_sum(df: pd.DataFrame, time_sample=1):
         resampled = group.resample(f'{time_sample}ms')['lock_fails']
         lock_fails_sum = resampled.sum()
         elements = resampled.count()
+        elements = elements.where(elements != 0, np.nan)
 
         success_rate = 2 * elements / (2 * elements + lock_fails_sum)
         throughput = elements * (1000 / time_sample)
-
+        
         # Put relevant fields in a DataFrame and add thread_id column
         throughput = throughput.to_frame(name='throughput')
         elements = elements.to_frame(name='elements')
@@ -194,6 +195,11 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     # Adding Troughput
     throughput = elements_per_sample * (1000 / time_sample)
 
+    # Actual unique threads
+    unique_threads_per_sample = data_df.resample(f'{time_sample}ms')['thread_id'].nunique()
+
+
+
     
 
 
@@ -204,7 +210,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
     
     # Active threads
-    axs[0,0].plot(times, averaged_df['active_threads_mean'], '-', linewidth=2, color='blue', label='mean')
+    axs[0,0].plot(times, unique_threads_per_sample, '-', linewidth=2, color='blue', label='mean')
     axs[0,0].set_title('Active Threads')
     axs[0,0].set_ylabel('Thread Count')
 
