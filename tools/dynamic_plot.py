@@ -79,7 +79,7 @@ def thread_count_sum(df: pd.DataFrame, time_sample=1):
         resampled = group.resample(f'{time_sample}ms')['lock_fails']
         lock_fails_sum = resampled.sum()
         elements = resampled.count()
-        elements = elements.where(elements != 0, np.nan)
+        #elements = elements.where(elements != 0, np.nan)
 
         success_rate = 2 * elements / (2 * elements + lock_fails_sum)
         throughput = elements * (1000 / time_sample)
@@ -192,11 +192,14 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         axs = [axs]
 
 
-    # Adding Troughput
+    # Adding Throughput
     throughput = elements_per_sample * (1000 / time_sample)
 
     # Actual unique threads
     unique_threads_per_sample = data_df.resample(f'{time_sample}ms')['thread_id'].nunique()
+
+    # Adding Operation Delay.
+    op_delay = resampled_df['op_delay'].mean()
 
 
 
@@ -215,9 +218,9 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     axs[0,0].set_ylabel('Thread Count')
 
     # Operation delay (benchmark)
-    axs[0,1].plot(times, [0] * len(times), '-', linewidth=2, color='blue', label='mean')
+    axs[0,1].plot(times, op_delay, '-', linewidth=2, color='blue', label='mean')
     axs[0,1].set_title('Operation Delay')
-    axs[0,1].set_ylabel('Time (us)')
+    axs[0,1].set_ylabel('Time (ns)')
 
 
 
