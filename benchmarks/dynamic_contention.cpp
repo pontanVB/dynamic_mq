@@ -570,18 +570,22 @@ class Context : public thread_coordination::Context {
             this->thread_data_.thread_intervals.front().delay
         });
         this->handle_.reset_lock_fails();
-        return retval;
         #endif
+
+        return retval;
+
     }
     #else
     void push(std::pair<key_type, value_type> const& e) {
         handle_.push(e);
     }
-
+    
     auto try_pop() {
         return handle_.try_pop();
     }
+
 #endif
+
 
     #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
     void reset_lock_fails(){
