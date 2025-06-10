@@ -131,12 +131,12 @@ void write_log_metrics(std::vector<ThreadData> const& thread_data, std::ostream&
         metrics.insert(metrics.end(), e.metrics.begin(), e.metrics.end());
     }
     std::sort(metrics.begin(), metrics.end(), [](auto const& lhs, auto const& rhs) { return lhs.tick < rhs.tick; });
-    out << "tick,stickiness,thread_id,total_iterations,lock_fails,active_threads,delay\n";
+    out << "tick,stickiness,thread_id,lock_fails\n";
     for (auto const& metric : metrics) {
         out << metric.tick.time_since_epoch().count() << ',' 
             << metric.stickiness << ',' 
             << metric.thread_id << ',' 
-            << metric.lock_fail_count << ','
+            << metric.lock_fail_count
             << '\n';
     }
 }
