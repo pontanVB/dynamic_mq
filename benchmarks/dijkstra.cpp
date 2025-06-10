@@ -40,14 +40,23 @@ struct Settings {
     std::filesystem::path graph_file;
     unsigned int seed = 1;
     pq_type::settings_type pq_settings{};
+
+    #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+    std::filesystem::path log_file_metrics = "metrics_log.txt";
+    #endif
 };
 
 void register_cmd_options(Settings& settings, cxxopts::Options& cmd) {
     // clang-format off
     cmd.add_options()
         ("j,threads", "The number of threads", cxxopts::value<int>(settings.num_threads), "NUMBER")
-        ("graph", "The input graph", cxxopts::value<std::filesystem::path>(settings.graph_file), "PATH");
+        ("graph", "The input graph", cxxopts::value<std::filesystem::path>(settings.graph_file), "PATH")
     // clang-format on
+    // optional logging for dynamic relaxation
+    #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+        ("m,log-file-metrics", "File to write the metric log to", cxxopts::value<std::filesystem::path>(settings.log_file_metrics), "PATH")
+    #endif
+        ;
     settings.pq_settings.register_cmd_options(cmd);
     cmd.parse_positional({"graph"});
 }
@@ -78,10 +87,70 @@ struct alignas(L1_CACHE_LINE_SIZE) AtomicDistance {
     std::atomic<long long> value{std::numeric_limits<long long>::max()};
 };
 
+#if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+struct ThreadInterval {
+    int active_threads;
+    std::chrono::nanoseconds delay;
+    std::chrono::milliseconds duration;
+};
+
+struct ThreadData {
+    std::deque<ThreadInterval> thread_intervals;
+
+
+    struct DynamicLog {
+        std::chrono::high_resolution_clock::time_point tick;
+        double stickiness;
+        int thread_id;
+        int lock_fail_count;
+        
+    };
+    std::vector<DynamicLog> metrics;
+};
+
+std::optional<node_type> try_pop_with_logging(handle_type& handle, int id, ThreadData& thread_data ) {
+    auto tick = std::chrono::high_resolution_clock::now();
+    auto retval = handle.try_pop();
+
+    thread_data.metrics.push_back({
+        tick,
+        handle.get_dynamic_stickiness(), 
+        id, 
+        handle.get_lock_fails(), 
+    });
+    handle.reset_lock_fails();
+
+    return retval;
+}
+
+void write_log_metrics(std::vector<ThreadData> const& thread_data, std::ostream& out) {
+    std::vector<ThreadData::DynamicLog> metrics;
+    metrics.reserve(std::accumulate(thread_data.begin(), thread_data.end(), 0UL,
+                                   [](std::size_t sum, auto const& e) { return sum + e.metrics.size(); }));
+    for (auto const& e : thread_data) {
+        metrics.insert(metrics.end(), e.metrics.begin(), e.metrics.end());
+    }
+    std::sort(metrics.begin(), metrics.end(), [](auto const& lhs, auto const& rhs) { return lhs.tick < rhs.tick; });
+    out << "tick,stickiness,thread_id,total_iterations,lock_fails,active_threads,delay\n";
+    for (auto const& metric : metrics) {
+        out << metric.tick.time_since_epoch().count() << ',' 
+            << metric.stickiness << ',' 
+            << metric.thread_id << ',' 
+            << metric.lock_fail_count << ','
+            << '\n';
+    }
+}
+
+#endif
+
 struct SharedData {
     Graph graph;
     std::vector<AtomicDistance> distances;
     termination_detection::TerminationDetection termination_detection;
+    #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+    std::vector<ThreadData> thread_data;
+    #endif
+
 };
 
 void process_node(node_type const& node, handle_type& handle, Counter& counter, SharedData& data) {
@@ -109,6 +178,12 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
                                            SharedData& data) {
     Counter counter;
     auto handle = pq.get_handle();
+
+#if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+    auto& thread_data = data.thread_data[thread_context.id()];
+    //thread_data.metrics.reserve(1000); // Adjust size as needed
+#endif
+
     if (thread_context.id() == 0) {
         data.distances[0].value = 0;
         handle.push({0, 0});
@@ -117,7 +192,11 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
     thread_context.synchronize();
     std::optional<node_type> node;
     while (data.termination_detection.repeat([&]() {
+        #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+        node = try_pop_with_logging(handle, thread_context.id(), thread_data);
+        #else
         node = handle.try_pop();
+        #endif
         return node.has_value();
     })) {
         process_node(*node, handle, counter, data);
@@ -126,9 +205,15 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
     return counter;
 }
 
+
+
+
 void run_benchmark(Settings const& settings) {
     std::clog << "Reading graph...\n";
     SharedData shared_data{{}, {}, termination_detection::TerminationDetection(settings.num_threads)};
+    #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+    shared_data.thread_data.resize(static_cast<std::size_t>(settings.num_threads));
+    #endif
     try {
         shared_data.graph = Graph(settings.graph_file);
     } catch (std::runtime_error const& e) {
@@ -149,6 +234,14 @@ void run_benchmark(Settings const& settings) {
                                                }};
     dispatcher.wait();
     auto end_time = std::chrono::steady_clock::now();
+
+#if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+
+    std::clog << "Writing metric logs...\n";
+    std::ofstream metric_log_out(settings.log_file_metrics);  // assumed to be valid
+    write_log_metrics(shared_data.thread_data, metric_log_out);
+    metric_log_out.close();
+#endif
 
     std::clog << "Done\n";
     auto total_counts =
