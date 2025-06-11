@@ -312,7 +312,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
             ax.grid(True, linestyle='--', alpha=0.7)
             ax.set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
 
-
+    #test
     
     #axs[-1, 0].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
     #axs[-1, 1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
