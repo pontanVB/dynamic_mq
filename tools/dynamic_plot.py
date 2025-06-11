@@ -315,8 +315,8 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     #axs[-1, 0].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
     #axs[-1, 1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
 
-    axs[-1, 0].set_xlabel(f"Time (ms)({time_sample}ms granularity)")
-    axs[-1, 1].set_xlabel(f"Time (ms)({time_sample}ms granularity)")
+    axs[-1, 0].set_xlabel(f"Time (ms) ({time_sample}ms granularity)")
+    axs[-1, 1].set_xlabel(f"Time (ms) ({time_sample}ms granularity)")
     plt.tight_layout()
 
 
