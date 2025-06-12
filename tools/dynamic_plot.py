@@ -181,7 +181,9 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
     # Per/tread contention
     contention_df = thread_count_sum(data_df, time_sample)
-    # start_time = contention_df.index.min()
+    start_time = contention_df.index.min()
+    end_time = contention_df.index.max()
+    full_time = pd.date_range(start=start_time, end=end_time, freq=f'{time_sample}ms')
     thread_contention_mins = contention_df.groupby('time').min()
     thread_contention_max = contention_df.groupby('time').max()
 
@@ -290,8 +292,12 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
 
     for thread_id, group in contention_df.groupby('thread_id'):
-        thread_rel_times = (group.index - start_time).total_seconds() * 1000
-        axs[3,1].plot(thread_rel_times, group['throughput'], '-', label=f'Thread {int(thread_id)}', alpha=0.7)
+        throughput_series = group['throughput']
+        throughput_full = throughput_series.reindex(full_time)
+        throughput_full_filled = throughput_full.fillna(0)
+
+        thread_rel_times = (full_time - start_time).total_seconds() * 1000
+        axs[3,1].plot(thread_rel_times, throughput_full_filled, '-', label=f'Thread {int(thread_id)}', alpha=0.7)
         
     axs[3,1].set_title('Throughput per Thread')
     # axs[3,1].legend()
@@ -328,14 +334,12 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         for ax in ax_row:
             ax.grid(True, linestyle='--', alpha=0.7)
             ax.set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
-
-
     
     #axs[-1, 0].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
     #axs[-1, 1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
 
-    axs[-1, 0].set_xlabel(f"Time ({time_sample}ms ganularity)")
-    axs[-1, 1].set_xlabel(f"Time ({time_sample}ms ganularity)")
+    axs[-1, 0].set_xlabel(f"Time (ms) ({time_sample}ms granularity)")
+    axs[-1, 1].set_xlabel(f"Time (ms) ({time_sample}ms granularity)")
     plt.tight_layout()
 
 
