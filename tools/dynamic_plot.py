@@ -75,15 +75,17 @@ def thread_count_sum(df: pd.DataFrame, time_sample=1):
     grouped = df.groupby('thread_id')
     thread_data = {}
 
+    full_time_index = pd.date_range(df.index.min(), df.index.max(), freq=f'{time_sample}ms')
+
     for thread_id, group in grouped:
         resampled = group.resample(f'{time_sample}ms')['lock_fails']
         lock_fails_sum = resampled.sum()
         elements = resampled.count()
-        #elements = elements.where(elements != 0, np.nan)
+
 
         success_rate = 2 * elements / (2 * elements + lock_fails_sum)
         throughput = elements * (1000 / time_sample)
-        
+                
         # Put relevant fields in a DataFrame and add thread_id column
         throughput = throughput.to_frame(name='throughput')
         elements = elements.to_frame(name='elements')
@@ -103,11 +105,11 @@ def thread_count_sum(df: pd.DataFrame, time_sample=1):
 def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=50):
     """Function to process the input files using pandas."""
 
-    x_val_amount = 0
     plot_amount = 0
 
     metrics_exist = False
     rank_error_exist = False
+    benchmarking = False
 
     # Load log files
     # Ok to provide a file or not. Not ok to provide invalid file
@@ -118,6 +120,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         data_df = pd.read_csv(log_file)
         print(f"Loaded metrics log file: {log_file}")
         metrics_exist = True
+        plot_amount += 4
     else:
         print(f"Metrics log file not found: {log_file}")
         return
@@ -129,20 +132,32 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         rank_error_df = pd.read_csv(rank_file)
         print(f"Loaded rank error file: {rank_file}")
         rank_error_exist = True
+        plot_amount += 1
     else:
         print(f"Error: Rank error file not found: {rank_file}")
         return
     
+    if 'active_threads' in data_df.columns:
+        benchmarking = True
+    
     if rank_error_exist and metrics_exist:
         data_df = (pd.concat([data_df, rank_error_df], axis=1))
+
+
 
 
     # Adding index and sampling
     data_df = data_df.set_index('tick')
     data_df.index = pd.to_datetime(data_df.index)
     resampled_df = data_df.resample(f'{time_sample}ms')
+    start_time = resampled_df.sum().index[0]
+    times = (resampled_df.sum().index - start_time).total_seconds() * 1000
+    # times = resampled_df.sum().index.values
+    #times = (resampled_index - resampled_index[0]).total_seconds() * 1000
+
     elements_per_sample = resampled_df.size()
-    data_df['success_rate'] = 2 / (data_df['lock_fails'] + 2)
+    # data_df['success_rate'] = 2 / (data_df['lock_fails'] + 2) - OLD
+
     # data_df['success_rate'] = data_df['success_rate'].where(data_df['success_rate'] > 1e-3, 0.0)
 
 
@@ -166,9 +181,11 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
     # Per/tread contention
     contention_df = thread_count_sum(data_df, time_sample)
-    start_time = contention_df.index.min()
+    # start_time = contention_df.index.min()
     thread_contention_mins = contention_df.groupby('time').min()
     thread_contention_max = contention_df.groupby('time').max()
+
+
 
     # Debug csv
     # contention_df.to_csv('thread_averaged.csv')
@@ -183,9 +200,10 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     headers.extend(['sucess_rate', 'stickiness'])
 
     # Calculate a dataFrame with element averages and percentiles for these headers
-    system_headers = ['active_threads', 'rank_error', 'delay']
-    averaged_df, times, valid_headers = time_averaged(data_df, system_headers, time_sample)
-    headers.extend(valid_headers)
+    if rank_error_exist:
+        system_headers = ['rank_error', 'delay']
+        averaged_df, times, valid_headers = time_averaged(data_df, system_headers, time_sample)
+        headers.extend(valid_headers)
 
 
     if len(headers) == 1:
@@ -199,17 +217,20 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     unique_threads_per_sample = data_df.resample(f'{time_sample}ms')['thread_id'].nunique()
 
     # Adding Operation Delay.
-    op_delay = resampled_df['op_delay'].mean()
+    if benchmarking:
+        op_delay = resampled_df['op_delay'].mean()
+    else:
+        op_delay = [0] * len(resampled_df)
 
 
 
-    
 
 
     # Ordering of plots
-    headers = ['active_threads', 'success_rate', 'all_threads', 'stickiness', 'troughput', 'rank_error', 'delay']
-    #fig, axs = plt.subplots(len(headers), 1, figsize=(10, 4 * len(headers)), sharex=True)
-    fig, axs = plt.subplots(5, 2, figsize=(10, 15))  # adjust figsize as needed
+    plot_am = len(data_df.columns)
+    fig, axs = plt.subplots(plot_amount, 2, figsize=(10, plot_amount * 3))  # adjust figsize as needed
+    today = datetime.now().strftime("%Y/%m/%d") 
+    fig.suptitle(plot_name, fontsize=16)
 
     
     # Active threads
@@ -275,32 +296,34 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     axs[3,1].set_title('Throughput per Thread')
     # axs[3,1].legend()
 
-    # Rank error
+    if rank_error_exist:
+        # Rank error
 
-    axs[4,0].plot(times, averaged_df["rank_error_mean"], '-', linewidth=2, color='orange', label='mean')
-    axs[4,0].plot(times, averaged_df["rank_error_p25"], '--', linewidth=1, color='red', label='25%')
-    axs[4,0].plot(times, averaged_df["rank_error_p50"], '--', linewidth=1, color='blue', label='50%')
-    axs[4,0].plot(times, averaged_df["rank_error_p75"], '--', linewidth=1, color='green', label='75%')
-    axs[4,0].plot(times, averaged_df["rank_error_p100"], '--', linewidth=1, color='purple', label='100%')
-    axs[4,0].set_title('Rank Error')
-    axs[4,0].set_ylabel('Rank Error')
-    axs[4,0].set_yscale('log')
-    axs[4,0].legend()
+        axs[4,0].plot(times, averaged_df["rank_error_mean"], '-', linewidth=2, color='orange', label='mean')
+        axs[4,0].plot(times, averaged_df["rank_error_p25"], '--', linewidth=1, color='red', label='25%')
+        axs[4,0].plot(times, averaged_df["rank_error_p50"], '--', linewidth=1, color='blue', label='50%')
+        axs[4,0].plot(times, averaged_df["rank_error_p75"], '--', linewidth=1, color='green', label='75%')
+        axs[4,0].plot(times, averaged_df["rank_error_p100"], '--', linewidth=1, color='purple', label='100%')
+        axs[4,0].set_title('Rank Error')
+        axs[4,0].set_ylabel('Rank Error')
+        axs[4,0].set_yscale('log')
+        axs[4,0].legend()
 
-    # Delay
+        # Delay
 
-    axs[4,1].plot(times, averaged_df["delay_mean"], '-', linewidth=2, color='orange', label='mean')
-    axs[4,1].plot(times, averaged_df["delay_p25"], '--', linewidth=1, color='red', label='25%')
-    axs[4,1].plot(times, averaged_df["delay_p50"], '--', linewidth=1, color='blue', label='50%')
-    axs[4,1].plot(times, averaged_df["delay_p75"], '--', linewidth=1, color='green', label='75%')
-    axs[4,1].plot(times, averaged_df["delay_p100"], '--', linewidth=1, color='purple', label='100%')
-    axs[4,1].set_title('Delay')
-    axs[4,1].set_ylabel('Delay')
-    axs[4,1].set_yscale('log')
-    axs[4,1].legend()
+        axs[4,1].plot(times, averaged_df["delay_mean"], '-', linewidth=2, color='orange', label='mean')
+        axs[4,1].plot(times, averaged_df["delay_p25"], '--', linewidth=1, color='red', label='25%')
+        axs[4,1].plot(times, averaged_df["delay_p50"], '--', linewidth=1, color='blue', label='50%')
+        axs[4,1].plot(times, averaged_df["delay_p75"], '--', linewidth=1, color='green', label='75%')
+        axs[4,1].plot(times, averaged_df["delay_p100"], '--', linewidth=1, color='purple', label='100%')
+        axs[4,1].set_title('Delay')
+        axs[4,1].set_ylabel('Delay')
+        axs[4,1].set_yscale('log')
+        axs[4,1].legend()
 
 
     # Final adjustments
+    maxtime = times.argmax()
     for ax_row in axs:
         for ax in ax_row:
             ax.grid(True, linestyle='--', alpha=0.7)
