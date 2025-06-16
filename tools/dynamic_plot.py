@@ -48,9 +48,7 @@ def thread_averaged(df: pd.DataFrame, headers, time_sample=1):
     if not valid_headers:
         print("None of the provided headers exist in the DataFrame")
         return
-    print(valid_headers)
-    # df = df.set_index('tick')
-    # df.index = pd.to_datetime(df.index)
+
 
     # Group by thread and then resample per time window
     grouped = df.groupby('thread_id')
@@ -144,12 +142,21 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         data_df = (pd.concat([data_df, rank_error_df], axis=1))
 
 
-
-
-    # Adding index and sampling
+    # Adding index
     data_df = data_df.set_index('tick')
     data_df.index = pd.to_datetime(data_df.index)
-    resampled_df = data_df.resample(f'{time_sample}ms')
+
+    # Granularity calculation
+    time_start = data_df.index.min()
+    time_end = data_df.index.max()
+    duration = time_end - time_start
+    granularity = int(duration.total_seconds() / 100 * 1000)
+    # granularity = 1
+    print(f"{granularity} ms granularity")
+    
+
+    # Sampling and time indexing
+    resampled_df = data_df.resample(f'{granularity}ms')
     start_time = resampled_df.sum().index[0]
     times = (resampled_df.sum().index - start_time).total_seconds() * 1000
     # times = resampled_df.sum().index.values
@@ -171,7 +178,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     
     thread_averaged_headers = ['stickiness', 'success_rate']
     # Calculate a dataFrame with per thread average on each timepoint
-    thread_averaged_df = thread_averaged(data_df, thread_averaged_headers, time_sample)
+    thread_averaged_df = thread_averaged(data_df, thread_averaged_headers, granularity)
 
     # For each thread at each time, take the resapled lock_fails and sum across threads
     #thread_averaged_df = thread_averaged_df.groupby('time')
@@ -180,10 +187,10 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     thread_averaged_max = thread_averaged_df.groupby('time').max()
 
     # Per/tread contention
-    contention_df = thread_count_sum(data_df, time_sample)
+    contention_df = thread_count_sum(data_df, granularity)
     start_time = contention_df.index.min()
     end_time = contention_df.index.max()
-    full_time = pd.date_range(start=start_time, end=end_time, freq=f'{time_sample}ms')
+    full_time = pd.date_range(start=start_time, end=end_time, freq=f'{granularity}ms')
     thread_contention_mins = contention_df.groupby('time').min()
     thread_contention_max = contention_df.groupby('time').max()
 
@@ -206,7 +213,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         system_headers = ['rank_error', 'delay']
         if benchmarking:
             system_headers.append('active_threads')
-        averaged_df, times, valid_headers = time_averaged(data_df, system_headers, time_sample)
+        averaged_df, times, valid_headers = time_averaged(data_df, system_headers, granularity)
         headers.extend(valid_headers)
 
 
@@ -215,10 +222,10 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
 
     # Adding Throughput
-    throughput = elements_per_sample * (1000 / time_sample)
+    throughput = elements_per_sample * (1000 / granularity)
 
     # Actual unique threads
-    unique_threads_per_sample = data_df.resample(f'{time_sample}ms')['thread_id'].nunique()
+    unique_threads_per_sample = data_df.resample(f'{granularity}ms')['thread_id'].nunique()
 
     # Adding Operation Delay.
     if benchmarking:
@@ -227,6 +234,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         op_delay = [0] * len(resampled_df)
 
     if benchmarking:
+        plot_amount = 5
         pos_active_threads = (0, 0)
         pos_op_delay = (0, 1)
         pos_contention = (1, 0)
@@ -236,8 +244,9 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         pos_throughput = (3,0)
         pos_throughput_per_thread = (3,1)
     else:
+        plot_amount = 3
         pos_contention = (0, 0)
-        pos_contention_per_thread = (0, 0)
+        pos_contention_per_thread = (0, 1)
         pos_stickiness = (1, 0)
         pos_stickiness_per_thread = (1, 1)
         pos_throughput = (2,0)
@@ -349,7 +358,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
     # Final adjustments
     maxtime = times.argmax()
-    x_ticks = np.linspace(0, times[-1] + 1, 8)
+    x_ticks = np.linspace(0, times[-1] + 1, 10)
     x_ticks = np.round(x_ticks / 10) * 10
     for ax_row in axs:
         for ax in ax_row:
@@ -359,8 +368,8 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     #axs[-1, 0].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
     #axs[-1, 1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
 
-    axs[-1, 0].set_xlabel(f"Time (ms) ({time_sample}ms granularity)")
-    axs[-1, 1].set_xlabel(f"Time (ms) ({time_sample}ms granularity)")
+    axs[-1, 0].set_xlabel(f"Time (ms) ({granularity}ms granularity)")
+    axs[-1, 1].set_xlabel(f"Time (ms) ({granularity}ms granularity)")
     plt.tight_layout()
 
 
