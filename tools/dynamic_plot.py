@@ -204,6 +204,8 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     # Calculate a dataFrame with element averages and percentiles for these headers
     if rank_error_exist:
         system_headers = ['rank_error', 'delay']
+        if benchmarking:
+            system_headers.append('active_threads')
         averaged_df, times, valid_headers = time_averaged(data_df, system_headers, time_sample)
         headers.extend(valid_headers)
 
@@ -224,6 +226,23 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     else:
         op_delay = [0] * len(resampled_df)
 
+    if benchmarking:
+        pos_active_threads = (0, 0)
+        pos_op_delay = (0, 1)
+        pos_contention = (1, 0)
+        pos_contention_per_thread = (1, 1)
+        pos_stickiness = (2, 0)
+        pos_stickiness_per_thread = (2, 1)
+        pos_throughput = (3,0)
+        pos_throughput_per_thread = (3,1)
+    else:
+        pos_contention = (0, 0)
+        pos_contention_per_thread = (0, 0)
+        pos_stickiness = (1, 0)
+        pos_stickiness_per_thread = (1, 1)
+        pos_throughput = (2,0)
+        pos_throughput_per_thread = (2,1)
+
 
 
 
@@ -234,32 +253,32 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     today = datetime.now().strftime("%Y/%m/%d") 
     fig.suptitle(plot_name, fontsize=16)
 
-    
-    # Active threads
-    axs[0,0].plot(times, unique_threads_per_sample, '-', linewidth=2, color='blue', label='mean')
-    axs[0,0].set_title('Active Threads')
-    axs[0,0].set_ylabel('Thread Count')
+    if benchmarking:
+        # Active threads
+        axs[pos_active_threads].plot(times, averaged_df['active_threads_mean'], '-', linewidth=2, color='blue', label='mean')
+        axs[pos_active_threads].set_title('Active Threads')
+        axs[pos_active_threads].set_ylabel('Thread Count')
 
-    # Operation delay (benchmark)
-    axs[0,1].plot(times, op_delay, '-', linewidth=2, color='blue', label='mean')
-    axs[0,1].set_title('Operation Delay')
-    axs[0,1].set_ylabel('Time (ns)')
+        # Operation delay (benchmark)
+        axs[pos_op_delay].plot(times, op_delay, '-', linewidth=2, color='blue', label='mean')
+        axs[pos_op_delay].set_title('Operation Delay')
+        axs[pos_op_delay].set_ylabel('Time (ns)')
 
 
 
     # Contention
-    axs[1,0].plot(times, success_rate, '-', linewidth=2, color='darkgreen', label='system_mean')
-    axs[1,0].plot(times, thread_contention_mins['success_rate'], '--', linewidth=1, color='darkred', label='min')
-    axs[1,0].plot(times, thread_contention_max['success_rate'], '--', linewidth=1, color='purple', label='max')
-    axs[1,0].set_title('System Contention')
-    axs[1,0].set_ylabel('Lock Success Rate')
-    axs[1,0].legend()
+    axs[pos_contention].plot(times, success_rate, '-', linewidth=2, color='darkgreen', label='system_mean')
+    axs[pos_contention].plot(times, thread_contention_mins['success_rate'], '--', linewidth=1, color='darkred', label='min')
+    axs[pos_contention].plot(times, thread_contention_max['success_rate'], '--', linewidth=1, color='purple', label='max')
+    axs[pos_contention].set_title('System Contention')
+    axs[pos_contention].set_ylabel('Lock Success Rate')
+    axs[pos_contention].legend()
 
     for thread_id, group in contention_df.groupby('thread_id'):
         thread_rel_times = (group.index - start_time).total_seconds() * 1000
-        axs[1,1].plot(thread_rel_times, group['success_rate'], '-', label=f'Thread {int(thread_id)}', alpha=0.7)
+        axs[pos_contention_per_thread].plot(thread_rel_times, group['success_rate'], '-', label=f'Thread {int(thread_id)}', alpha=0.7)
 
-    axs[1,1].set_title('Contention per Thread')
+    axs[pos_contention_per_thread].set_title('Contention per Thread')
     # axs[1,1].legend()
 
     # More y ticks if needed
@@ -269,26 +288,26 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     #     ax.set_yticks(ticks)
 
     # Stickiness
-    axs[2,0].plot(times, thread_averaged_medians['stickiness'], '-', linewidth=2, color='darkgreen', label='median')
-    axs[2,0].plot(times, thread_averaged_mins['stickiness']   , '--', linewidth=1, color='red', label='min')
-    axs[2,0].plot(times, thread_averaged_max['stickiness']    , '--', linewidth=1, color='purple', label='max')
-    axs[2,0].set_title('System Stickiness')
-    axs[2,0].set_ylabel('Stickiness')
-    axs[2,0].set_yscale('log')
-    axs[2,0].legend()
+    axs[pos_stickiness].plot(times, thread_averaged_medians['stickiness'], '-', linewidth=2, color='darkgreen', label='median')
+    axs[pos_stickiness].plot(times, thread_averaged_mins['stickiness']   , '--', linewidth=1, color='red', label='min')
+    axs[pos_stickiness].plot(times, thread_averaged_max['stickiness']    , '--', linewidth=1, color='purple', label='max')
+    axs[pos_stickiness].set_title('System Stickiness')
+    axs[pos_stickiness].set_ylabel('Stickiness')
+    axs[pos_stickiness].set_yscale('log')
+    axs[pos_stickiness].legend()
 
     for thread_id, group in thread_averaged_df.groupby('thread_id'):
         thread_rel_times = (group.index - start_time).total_seconds() * 1000
-        axs[2,1].plot(thread_rel_times, group['stickiness'], '-', label=f'Thread {int(thread_id)}', alpha=0.7)
+        axs[pos_stickiness_per_thread].plot(thread_rel_times, group['stickiness'], '-', label=f'Thread {int(thread_id)}', alpha=0.7)
 
-    axs[2,1].set_title('Stickiness per Thread')
-    axs[2,1].set_yscale('log')
+    axs[pos_stickiness_per_thread].set_title('Stickiness per Thread')
+    axs[pos_stickiness_per_thread].set_yscale('log')
     # axs[2,1].legend()
 
     # Throughput
-    axs[3,0].plot(times, throughput, '-', linewidth=2, color='darkblue', label='temp')
-    axs[3,0].set_title('System Throughput')
-    axs[3,0].set_ylabel('Elements / s')
+    axs[pos_throughput].plot(times, throughput, '-', linewidth=2, color='darkblue', label='temp')
+    axs[pos_throughput].set_title('System Throughput')
+    axs[pos_throughput].set_ylabel('Elements / s')
 
 
     for thread_id, group in contention_df.groupby('thread_id'):
@@ -297,9 +316,9 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         throughput_full_filled = throughput_full.fillna(0)
 
         thread_rel_times = (full_time - start_time).total_seconds() * 1000
-        axs[3,1].plot(thread_rel_times, throughput_full_filled, '-', label=f'Thread {int(thread_id)}', alpha=0.7)
+        axs[pos_throughput_per_thread].plot(thread_rel_times, throughput_full_filled, '-', label=f'Thread {int(thread_id)}', alpha=0.7)
         
-    axs[3,1].set_title('Throughput per Thread')
+    axs[pos_throughput_per_thread].set_title('Throughput per Thread')
     # axs[3,1].legend()
 
     if rank_error_exist:
@@ -330,10 +349,12 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
     # Final adjustments
     maxtime = times.argmax()
+    x_ticks = np.linspace(0, times[-1] + 1, 8)
+    x_ticks = np.round(x_ticks / 10) * 10
     for ax_row in axs:
         for ax in ax_row:
             ax.grid(True, linestyle='--', alpha=0.7)
-            ax.set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
+            ax.set_xticks(x_ticks)  # ticks every time_intervals
     
     #axs[-1, 0].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
     #axs[-1, 1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
