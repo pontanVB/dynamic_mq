@@ -68,11 +68,25 @@ void write_settings_human_readable(Settings const& settings, std::ostream& out) 
 }
 
 void write_settings_json(Settings const& settings, std::ostream& out) {
+    std::ostringstream tmp;
+    pq_type::write_human_readable(tmp);
+
+    std::string name = tmp.str();
+
+    // Find position of first newline
+    auto pos = name.find('\n');
+    if (pos != std::string::npos) {
+        name = name.substr(0, pos);
+    }
+
+
+         
     out << '{';
     out << std::quoted("num_threads") << ':' << settings.num_threads << ',';
     out << std::quoted("graph_file") << ':' << settings.graph_file << ',';
     out << std::quoted("seed") << ':' << settings.seed << ',';
-    out << std::quoted("pq") << ':';
+    out << std::quoted("pq_name") << ':' << std::quoted(name) << ',';
+    out << std::quoted("pq_settings") << ':';
     settings.pq_settings.write_json(out);
     out << '}';
 }
@@ -81,6 +95,10 @@ struct Counter {
     long long pushed_nodes{0};
     long long ignored_nodes{0};
     long long processed_nodes{0};
+#if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+    long long pushed_nodes_record{0};
+    long long popped_nodes_record{0};
+#endif
 };
 
 struct alignas(L1_CACHE_LINE_SIZE) AtomicDistance {
@@ -100,6 +118,8 @@ struct ThreadData {
 
     struct DynamicLog {
         std::chrono::high_resolution_clock::time_point tick;
+        long long pushes;
+        long long pops;
         double stickiness;
         int thread_id;
         int lock_fail_count;
@@ -108,17 +128,21 @@ struct ThreadData {
     std::vector<DynamicLog> metrics;
 };
 
-std::optional<node_type> try_pop_with_logging(handle_type& handle, int id, ThreadData& thread_data ) {
+std::optional<node_type> try_pop_with_logging(handle_type& handle, int id, ThreadData& thread_data, Counter& counter) {
     auto tick = std::chrono::high_resolution_clock::now();
     auto retval = handle.try_pop();
 
     thread_data.metrics.push_back({
         tick,
+        counter.pushed_nodes_record,
+        counter.popped_nodes_record,
         handle.get_dynamic_stickiness(), 
         id, 
         handle.get_lock_fails(), 
     });
     handle.reset_lock_fails();
+    counter.pushed_nodes_record = 0;
+    counter.popped_nodes_record = 0;
 
     return retval;
 }
@@ -131,9 +155,11 @@ void write_log_metrics(std::vector<ThreadData> const& thread_data, std::ostream&
         metrics.insert(metrics.end(), e.metrics.begin(), e.metrics.end());
     }
     std::sort(metrics.begin(), metrics.end(), [](auto const& lhs, auto const& rhs) { return lhs.tick < rhs.tick; });
-    out << "tick,stickiness,thread_id,lock_fails\n";
+    out << "tick,pushes,pops,stickiness,thread_id,lock_fails\n";
     for (auto const& metric : metrics) {
         out << metric.tick.time_since_epoch().count() << ',' 
+            << metric.pushes << ',' 
+            << metric.pops << ',' 
             << metric.stickiness << ',' 
             << metric.thread_id << ',' 
             << metric.lock_fail_count
@@ -167,6 +193,9 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
             if (data.distances[target].value.compare_exchange_weak(old_d, d, std::memory_order_relaxed)) {
                 handle.push({d, target});
                 ++counter.pushed_nodes;
+                #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+                ++counter.pushed_nodes_record;
+                #endif
                 break;
             }
         }
@@ -174,29 +203,32 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
     ++counter.processed_nodes;
 }
 
+#if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
 [[gnu::noinline]] Counter benchmark_thread(thread_coordination::Context& thread_context, pq_type& pq,
                                            SharedData& data) {
     Counter counter;
     auto handle = pq.get_handle();
 
-#if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
     auto& thread_data = data.thread_data[thread_context.id()];
-    //thread_data.metrics.reserve(1000); // Adjust size as needed
-#endif
 
     if (thread_context.id() == 0) {
         data.distances[0].value = 0;
         handle.push({0, 0});
         ++counter.pushed_nodes;
+        ++counter.pushed_nodes_record;
     }
     thread_context.synchronize();
     std::optional<node_type> node;
     while (data.termination_detection.repeat([&]() {
-        #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
-        node = try_pop_with_logging(handle, thread_context.id(), thread_data);
-        #else
-        node = handle.try_pop();
-        #endif
+        if(counter.pushed_nodes_record + counter.popped_nodes_record >= 200) {
+            node = try_pop_with_logging(handle, thread_context.id(), thread_data, counter);
+            ++counter.popped_nodes_record;
+        }
+        else{
+            node = handle.try_pop();
+            ++counter.popped_nodes_record;
+        }
+
         return node.has_value();
     })) {
         process_node(*node, handle, counter, data);
@@ -204,6 +236,32 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
     thread_context.synchronize();
     return counter;
 }
+
+#else
+
+[[gnu::noinline]] Counter benchmark_thread(thread_coordination::Context& thread_context, pq_type& pq,
+                                           SharedData& data) {
+    Counter counter;
+    auto handle = pq.get_handle();
+    if (thread_context.id() == 0) {
+        data.distances[0].value = 0;
+        handle.push({0, 0});
+        ++counter.pushed_nodes;
+    }
+
+    thread_context.synchronize();
+    std::optional<node_type> node;
+    while (data.termination_detection.repeat([&]() {
+        node = handle.try_pop();
+        return node.has_value();
+    })) {
+        process_node(*node, handle, counter, data);
+    }
+
+    thread_context.synchronize();
+    return counter;
+}
+#endif
 
 
 

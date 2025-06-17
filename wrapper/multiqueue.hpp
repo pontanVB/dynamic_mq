@@ -266,7 +266,8 @@ class MultiQueue {
                 out << std::quoted("punishment") << ':' << config.punishment << ',';
                 out << std::quoted("reward") << ':' << config.reward << ',';
                 out << std::quoted("lower_threshold") << ':' << config.lower_threshold << ',';
-                out << std::quoted("upper_threshold") << ':' << config.upper_threshold;
+                out << std::quoted("upper_threshold") << ':' << config.upper_threshold << ',';
+                out << std::quoted("stick_factor") << ':' << config.stick_factor;
                 out << '}';
                 #endif
             }

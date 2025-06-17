@@ -13,13 +13,22 @@ def process_files(outputs_folder, plot_name):
     for filename in os.listdir(outputs_folder):
         if filename.endswith(".json"):
             print(filename)
-            queue_name = filename[:-5]  # strip '.json'
             filepath = os.path.join(outputs_folder, filename)
             with open(filepath, "r") as f:
                 d = json.load(f)
 
+            full_name = d["settings"]["pq_name"]
+            queue_name = full_name.splitlines()[0].strip()
             graph_file = os.path.basename(d["settings"]["graph_file"]).removesuffix(".gr")
             time_ns = d["results"]["time_ns"]
+
+            pq_settings = d["settings"].get("pq_settings", {})
+            if "stickiness_parameters" in pq_settings:
+                queue_name = "StickRandom"
+                stick_params = pq_settings.get("stickiness_parameters", {})
+                stick_factor_value = stick_params.get("stick_factor", 0)
+                if stick_factor_value > 1:
+                    queue_name += "Dynamic"
 
             if queue_name not in data:
                 data[queue_name] = {}
