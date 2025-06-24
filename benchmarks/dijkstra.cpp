@@ -57,13 +57,13 @@ void register_cmd_options(cxxopts::Options& cmd) {
     cmd.parse_positional({"graph"});
 }
 
-void write_settings_human_readable(Settings const& settings, std::ostream& out) {
+void write_settings_human_readable(std::ostream& out) {
     out << "Threads: " << settings.num_threads << '\n';
     out << "Graph: " << settings.graph_file << '\n';
     settings.pq_settings.write_human_readable(out);
 }
 
-void write_settings_json(Settings const& settings, std::ostream& out) {
+void write_settings_json(std::ostream& out) {
     std::ostringstream tmp;
     pq_type::write_human_readable(tmp);
 
@@ -265,7 +265,7 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
         thread_context.synchronize();
         if (thread_context.id() == 0) {
             data.missing_nodes.store(0, std::memory_order_relaxed);
-            data.termination_detection.reset();
+            data.termination_detection.reset(settings.num_threads);     // DOESN'T MATCH COMMIT FROM MARVIN, BUT REQUIRES NUM_THREADS.
         }
         thread_context.synchronize();
     }
@@ -345,7 +345,7 @@ void run_benchmark() {
     }
     std::cout << '{';
     std::cout << std::quoted("settings") << ':';
-    write_settings_json(settings, std::cout);
+    write_settings_json(std::cout);
     std::cout << ',';
     std::cout << std::quoted("graph") << ':';
     std::cout << '{';
@@ -383,7 +383,7 @@ int main(int argc, char* argv[]) {
     cxxopts::Options cmd(argv[0]);
     cmd.add_options()("h,help", "Print this help");
     Settings settings{};
-    register_cmd_options(settings, cmd);
+    register_cmd_options(cmd);
 
     try {
         auto args = cmd.parse(argc, argv);
@@ -398,10 +398,10 @@ int main(int argc, char* argv[]) {
     }
 
     std::clog << "= Settings =\n";
-    write_settings_human_readable(settings, std::clog);
+    write_settings_human_readable(std::clog);
     std::clog << '\n';
 
     std::clog << "= Running benchmark =\n";
-    run_benchmark(settings);
+    run_benchmark();
     return EXIT_SUCCESS;
 }

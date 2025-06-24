@@ -196,7 +196,7 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
         if (thread_context.id() == 0) {
             std::clog << "Missing nodes: " << data.missing_nodes.load(std::memory_order_relaxed) << '\n';
             data.missing_nodes.store(0, std::memory_order_relaxed);
-            data.termination_detection.reset();
+            data.termination_detection.reset(settings.num_threads);     // DOESN'T MATCH COMMIT FROM MARVIN, BUT REQUIRES NUM_THREADS.
         }
         thread_context.synchronize();
     }

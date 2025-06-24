@@ -166,7 +166,7 @@ void write_vector_json(std::ostream& out, std::vector<V> const& v, F f) {
         f(v.back());
     }
     out << ']';
-};
+}
 
 void write_settings_json(Settings const& settings, std::ostream& out) {
     out << '{';
