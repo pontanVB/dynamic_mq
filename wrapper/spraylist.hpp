@@ -69,22 +69,36 @@ class Spraylist {
             return *this;
         }
 
-        void push(value_type const& value) {
-            ::sl_add_val(pq_, Min ? value.first : sentinel - value.first - 1, value.second, TRANSACTIONAL);
+        bool push(value_type const& value) {
+            auto ret = ::sl_add_val(pq_, Min ? value.first : sentinel - value.first - 1, value.second, TRANSACTIONAL);
+            return ret == 1;
         }
 
+        /* std::optional<value_type> try_pop() { */
+        /*     unsigned long key{0}; */
+        /*     unsigned long value; */
+        /*     int ret; */
+        /*     do { */
+        /*         ret = ::spray_delete_min_key(pq_, &key, &value, data_); */
+        /*     } while (ret == 0 && key != sentinel); */
+        /*     if (key == sentinel) { */
+        /*         return std::nullopt; */
+        /*     } */
+        /*     return value_type{Min ? key : sentinel - key - 1, value}; */
+        /* }; */
         std::optional<value_type> try_pop() {
-            unsigned long key;
-            unsigned long value;
-            int ret;
-            do {
-                ret = ::spray_delete_min_key(pq_, &key, &value, data_);
-            } while (ret == 0 && key != sentinel);
-            if (key == sentinel) {
-                return std::nullopt;
+            while (true) {
+                unsigned long key{0};
+                unsigned long value;
+                int ret = ::spray_delete_min_key(pq_, &key, &value, data_);
+                if (key == sentinel) {
+                    return std::nullopt;
+                }
+                if (ret != 0) {
+                    return std::make_optional<value_type>(Min ? key : sentinel - key - 1, value);
+                }
             }
-            return value_type{Min ? key : sentinel - key - 1, value};
-        };
+        }
     };
 
     [[nodiscard]] ::thread_data_t* new_thread_data() const {

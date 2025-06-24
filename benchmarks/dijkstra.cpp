@@ -11,24 +11,18 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <x86intrin.h>
-#include <array>
 #include <atomic>
 #include <cassert>
-#include <charconv>
 #include <chrono>
-#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <memory>
-#include <new>
 #include <numeric>
-#include <random>
 #include <thread>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 using pq_type = PQ<true, unsigned long, unsigned long>;
@@ -46,7 +40,9 @@ struct Settings {
     #endif
 };
 
-void register_cmd_options(Settings& settings, cxxopts::Options& cmd) {
+Settings settings{};
+
+void register_cmd_options(cxxopts::Options& cmd) {
     // clang-format off
     cmd.add_options()
         ("j,threads", "The number of threads", cxxopts::value<int>(settings.num_threads), "NUMBER")
@@ -173,6 +169,7 @@ struct SharedData {
     Graph graph;
     std::vector<AtomicDistance> distances;
     termination_detection::TerminationDetection termination_detection;
+    std::atomic_llong missing_nodes{0};
     #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
     std::vector<ThreadData> thread_data;
     #endif
@@ -191,11 +188,13 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
         auto old_d = data.distances[target].value.load(std::memory_order_relaxed);
         while (d < old_d) {
             if (data.distances[target].value.compare_exchange_weak(old_d, d, std::memory_order_relaxed)) {
-                handle.push({d, target});
-                ++counter.pushed_nodes;
-                #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
-                ++counter.pushed_nodes_record;
-                #endif
+                if (handle.push({d, target})) {
+                    ++counter.pushed_nodes;
+                    // DOUBLECHECK THIS
+                    #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+                    ++counter.pushed_nodes_record;
+                    #endif
+                }
                 break;
             }
         }
@@ -203,6 +202,7 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
     ++counter.processed_nodes;
 }
 
+// CHECK THIS PART
 #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
 [[gnu::noinline]] Counter benchmark_thread(thread_coordination::Context& thread_context, pq_type& pq,
                                            SharedData& data) {
@@ -238,7 +238,6 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
 }
 
 #else
-
 [[gnu::noinline]] Counter benchmark_thread(thread_coordination::Context& thread_context, pq_type& pq,
                                            SharedData& data) {
     Counter counter;
@@ -248,17 +247,28 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
         handle.push({0, 0});
         ++counter.pushed_nodes;
     }
-
     thread_context.synchronize();
-    std::optional<node_type> node;
-    while (data.termination_detection.repeat([&]() {
-        node = handle.try_pop();
-        return node.has_value();
-    })) {
-        process_node(*node, handle, counter, data);
+    while (true) {
+        std::optional<node_type> node;
+        while (data.termination_detection.repeat([&]() {
+            node = handle.try_pop();
+            return node.has_value();
+        })) {
+            process_node(*node, handle, counter, data);
+        }
+        data.missing_nodes.fetch_add(counter.pushed_nodes - counter.processed_nodes - counter.ignored_nodes,
+                                     std::memory_order_relaxed);
+        thread_context.synchronize();
+        if (data.missing_nodes.load(std::memory_order_relaxed) == 0) {
+            break;
+        }
+        thread_context.synchronize();
+        if (thread_context.id() == 0) {
+            data.missing_nodes.store(0, std::memory_order_relaxed);
+            data.termination_detection.reset();
+        }
+        thread_context.synchronize();
     }
-
-    thread_context.synchronize();
     return counter;
 }
 #endif
@@ -266,7 +276,7 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
 
 
 
-void run_benchmark(Settings const& settings) {
+void run_benchmark() {
     std::clog << "Reading graph...\n";
     SharedData shared_data{{}, {}, termination_detection::TerminationDetection(settings.num_threads)};
     #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
@@ -310,7 +320,7 @@ void run_benchmark(Settings const& settings) {
             return sum;
         });
     std::clog << '\n';
-    auto longest_distance =
+    auto furthest_node =
         std::max_element(shared_data.distances.begin(), shared_data.distances.end(), [](auto const& a, auto const& b) {
             auto a_val = a.value.load(std::memory_order_relaxed);
             auto b_val = b.value.load(std::memory_order_relaxed);
@@ -321,11 +331,12 @@ void run_benchmark(Settings const& settings) {
                 return true;
             }
             return a_val < b_val;
-        })->value.load();
+        });
     std::clog << "= Results =\n";
     std::clog << "Time (s): " << std::fixed << std::setprecision(3)
               << std::chrono::duration<double>(end_time - start_time).count() << '\n';
-    std::clog << "Longest distance: " << longest_distance << '\n';
+    std::clog << "Furthest node: " << furthest_node - shared_data.distances.begin() << '\n';
+    std::clog << "Longest distance: " << furthest_node->value.load(std::memory_order_relaxed) << '\n';
     std::clog << "Processed nodes: " << total_counts.processed_nodes << '\n';
     std::clog << "Ignored nodes: " << total_counts.ignored_nodes << '\n';
     if (total_counts.processed_nodes + total_counts.ignored_nodes != total_counts.pushed_nodes) {
@@ -344,7 +355,8 @@ void run_benchmark(Settings const& settings) {
     std::cout << std::quoted("results") << ':';
     std::cout << '{';
     std::cout << std::quoted("time_ns") << ':' << std::chrono::nanoseconds{end_time - start_time}.count() << ',';
-    std::cout << std::quoted("longest_distance") << ':' << longest_distance << ',';
+    std::cout << std::quoted("furthest_node") << ':' << furthest_node - shared_data.distances.begin() << ',';
+    std::cout << std::quoted("longest_distance") << ':' << furthest_node->value.load(std::memory_order_relaxed) << ',';
     std::cout << std::quoted("processed_nodes") << ':' << total_counts.processed_nodes << ',';
     std::cout << std::quoted("ignored_nodes") << ':' << total_counts.ignored_nodes;
     std::cout << '}';
