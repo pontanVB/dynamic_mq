@@ -21,7 +21,6 @@ target_link_libraries(mq_stick_random INTERFACE mq)
 add_library(mq_stick_random_dynamic INTERFACE)
 target_compile_definitions(mq_stick_random_dynamic INTERFACE MQ_MODE_STICK_RANDOM_DYNAMIC)
 target_link_libraries(mq_stick_random_dynamic INTERFACE mq)
-target_include_directories(mq_stick_random_dynamic INTERFACE benchmark/util)
 
 add_library(mq_stick_swap INTERFACE)
 target_compile_definitions(mq_stick_swap INTERFACE MQ_MODE_STICK_SWAP)
