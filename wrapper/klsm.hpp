@@ -35,9 +35,22 @@ class KLsm {
     using pq_type = ::kpq::k_lsm<key_type, mapped_type, relaxation>;
     static constexpr key_type sentinel_ = std::numeric_limits<key_type>::max();
 
+    // Wrapper for EmptySettings
+    // Needed for write_json outputs
+    struct klsmSettings:util::EmptySettings {
+    static void write_human_readable(std::ostream& out) {
+        out << "k-LSM\n"
+            << "  k: " << relaxation << '\n';
+    }
+
+    static void write_json(std::ostream& out) {
+        out << '{' << std::quoted("k") << ':' << relaxation << '}';
+    }
+    };
+
    public:
     using handle_type = util::SelfHandle<KLsm>;
-    using settings_type = util::EmptySettings;
+    using settings_type = klsmSettings;
 
    private:
     pq_type pq_{};
@@ -59,8 +72,7 @@ class KLsm {
     }
 
     static void write_human_readable(std::ostream& out) {
-        out << "k-Lsm\n";
-        out << "  k: " << relaxation << '\n';
+        settings_type::write_human_readable(out);
     }
 
     handle_type get_handle() {

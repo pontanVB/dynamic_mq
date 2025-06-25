@@ -30,8 +30,14 @@ def process_files(outputs_folder, plot_name):
                 if stick_factor_value > 1:
                     queue_name += "Dynamic"
 
+            if queue_name == "k-LSM":
+                k_val = str(pq_settings.get("k"))
+                print(queue_name + " " + k_val)
+                queue_name = queue_name + '_' + k_val
+                
             if queue_name not in data:
                 data[queue_name] = {}
+            
             data[queue_name][graph_file] = time_ns / 1e6
 
     # Sorted graph and queue names
@@ -55,7 +61,15 @@ def process_files(outputs_folder, plot_name):
     plt.xlabel("Graph")
     plt.ylabel("Time (ms)")
     plt.title("Execution Time per Graph (per Queue)")
-    plt.legend(title="Queue")
+
+    # Sort Legend by ascii code (alphabetically)
+    handles, labels = plt.gca().get_legend_handles_labels()
+    sorted_items = sorted(zip(labels, handles))
+    labels, handles = zip(*sorted_items)
+    plt.legend(handles, labels)
+
+
+    plt.legend(title="Queue", loc='center left', bbox_to_anchor=(1, 0.5))
     plt.tight_layout()
     plt.grid(axis='y')
 
