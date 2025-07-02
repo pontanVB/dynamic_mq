@@ -21,14 +21,19 @@ def process_files(outputs_folder, plot_name):
             queue_name = full_name.splitlines()[0].strip()
             graph_file = os.path.basename(d["settings"]["graph_file"]).removesuffix(".gr")
             time_ns = d["results"]["time_ns"]
+            if queue_name == "MultiQueue":
+                queue_name = "MQ"
 
             pq_settings = d["settings"].get("pq_settings", {})
-            if "stickiness_parameters" in pq_settings:
-                queue_name = "StickRandom"
+            if "mode_name" in pq_settings:
+                #queue_name = "MQ"
+                queue_mode = pq_settings.get("mode_name", {})
+                queue_name += '_' + queue_mode
+                print(queue_name)
                 stick_params = pq_settings.get("stickiness_parameters", {})
                 stick_factor_value = stick_params.get("stick_factor", 0)
-                if stick_factor_value > 1:
-                    queue_name += "Dynamic"
+                # if stick_factor_value > 1:
+                #     queue_name += "Dynamic"
 
             if queue_name == "k-LSM":
                 k_val = str(pq_settings.get("k"))

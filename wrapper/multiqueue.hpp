@@ -255,6 +255,7 @@ class MultiQueue {
         void write_json(std::ostream &out) const {
             out << '{';
             out << std::quoted("queue_factor") << ':' << factor << ',';
+            out << std::quoted("mode_name") << ':' << std::quoted(mode_name) << ',';
             out << std::quoted("seed") << ':' << config.seed;
             if constexpr (has_stickiness) {
                 out << ',';
