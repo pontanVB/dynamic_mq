@@ -21,7 +21,7 @@ def time_averaged(df: pd.DataFrame, headers, time_sample=1):
     # df.index = pd.to_datetime(df.index)
 
     # Resample once
-    resampled = df.resample(f'{time_sample}ms')[valid_headers]
+    resampled = df.resample(f'{time_sample}ns')[valid_headers]
 
     # Calculate size, percentiles, mean on the resampled groups
     # size = resampled.size().add_suffix('_size')
@@ -55,7 +55,7 @@ def thread_averaged(df: pd.DataFrame, headers, time_sample=1):
 
     thread_data = {}
     for thread_id, group in grouped:
-        resampled = group.resample(f'{time_sample}ms')[valid_headers]
+        resampled = group.resample(f'{time_sample}ns')[valid_headers]
         stats = resampled.mean()  # you can also compute other stats here
         stats['thread_id'] = thread_id
         thread_data[thread_id] = stats
@@ -73,10 +73,10 @@ def thread_count_sum(df: pd.DataFrame, time_sample=1):
     grouped = df.groupby('thread_id')
     thread_data = {}
 
-    full_time_index = pd.date_range(df.index.min(), df.index.max(), freq=f'{time_sample}ms')
+    full_time_index = pd.date_range(df.index.min(), df.index.max(), freq=f'{time_sample}ns')
 
     for thread_id, group in grouped:
-        resampled = group.resample(f'{time_sample}ms')
+        resampled = group.resample(f'{time_sample}ns')
         lock_fails_sum = resampled['lock_fails'].sum()
         pushes_sum = resampled['pushes'].sum()
         pops_sum = resampled['pops'].sum()
@@ -131,12 +131,15 @@ def process_files(log_file, plot_name):
     time_start = data_df.index.min()
     time_end = data_df.index.max()
     duration = time_end - time_start
-    duration_ms = duration.total_seconds() * 1000
-    granularity  = max(1, np.round(duration_ms / 100))   # 1 % of run, ≥ 1 ms    # granularity = 1
-    print(f"{granularity} ms granularity")
+    duration_ns = duration.total_seconds() * 1e9
+    granularity = np.round(duration_ns / 100)  # 1 % of run, ≥ 1 ms    # granularity = 1
+    disp_gran = np.round(granularity / 1e6, 1) 
+
+    print(f"{disp_gran} ns granularity")
+    
 
     # Sampling and time indexing
-    resampled_df = data_df.resample(f'{granularity}ms')
+    resampled_df = data_df.resample(f'{granularity}ns')
     per_sample_pops = resampled_df['pops'].sum()
     per_sample_pushes = resampled_df['pushes'].sum()
     per_sample_elements = per_sample_pops + per_sample_pushes
@@ -157,7 +160,7 @@ def process_files(log_file, plot_name):
     contention_df = thread_count_sum(data_df, granularity)
     start_time = contention_df.index.min()
     end_time = contention_df.index.max()
-    full_time = pd.date_range(start=start_time, end=end_time, freq=f'{granularity}ms')
+    full_time = pd.date_range(start=start_time, end=end_time, freq=f'{granularity}ns')
     thread_contention_mins = contention_df.groupby('time').min()
     thread_contention_max = contention_df.groupby('time').max()
 
@@ -270,8 +273,9 @@ def process_files(log_file, plot_name):
     #axs[-1, 0].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
     #axs[-1, 1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
 
-    axs[-1, 0].set_xlabel(f"Time (ms) ({granularity}ms granularity)")
-    axs[-1, 1].set_xlabel(f"Time (ms) ({granularity}ms granularity)")
+
+    axs[-1, 0].set_xlabel(f"Time (ms) ({disp_gran}ns granularity)")
+    axs[-1, 1].set_xlabel(f"Time (ms) ({disp_gran}ns granularity)")
     plt.tight_layout()
 
 
