@@ -262,13 +262,9 @@ def process_files(log_file, plot_name):
 
 
     # Final adjustments
-    # maxtime = times.argmax()
-    # x_ticks = np.linspace(0, times[-1] + 1, 10)
-    # x_ticks = np.round(x_ticks / 10) * 10
-    # for ax_row in axs:
-    #     for ax in ax_row:
-    #         ax.grid(True, linestyle='--', alpha=0.7)
-    #         ax.set_xticks(x_ticks)  # ticks every time_intervals
+    for ax_row in axs:
+        for ax in ax_row:
+            ax.grid(True, linestyle='--', alpha=0.7)
     
     #axs[-1, 0].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
     #axs[-1, 1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
