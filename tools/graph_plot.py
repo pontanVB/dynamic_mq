@@ -131,10 +131,9 @@ def process_files(log_file, plot_name):
     time_start = data_df.index.min()
     time_end = data_df.index.max()
     duration = time_end - time_start
-    granularity = int(duration.total_seconds() / 100 * 1000)
-    # granularity = 1
+    duration_ms = duration.total_seconds() * 1000
+    granularity  = max(1, np.round(duration_ms / 100))   # 1 % of run, ≥ 1 ms    # granularity = 1
     print(f"{granularity} ms granularity")
-    
 
     # Sampling and time indexing
     resampled_df = data_df.resample(f'{granularity}ms')
