@@ -84,7 +84,7 @@ def thread_count_sum(df: pd.DataFrame, time_sample=1):
 
 
         success_rate = elements / (elements + lock_fails_sum)
-        throughput = elements * (1000 / time_sample)
+        throughput = elements * (1e9 / time_sample)
                 
         # Put relevant fields in a DataFrame and add thread_id column
         success_rate = success_rate.to_frame(name='success_rate')
