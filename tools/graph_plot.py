@@ -178,9 +178,9 @@ def process_files(log_file, plot_name):
 
 
     # Adding Throughput
-    throughput = per_sample_elements * (1000 / granularity)
-    pushes = per_sample_pushes * 1000 / granularity
-    pops = per_sample_pops * 1000 / granularity
+    throughput = per_sample_elements * (1e9 / granularity)
+    pushes = per_sample_pushes * 1e9 / granularity
+    pops = per_sample_pops * 1e9 / granularity
 
 
     plot_amount = 3
@@ -262,13 +262,13 @@ def process_files(log_file, plot_name):
 
 
     # Final adjustments
-    maxtime = times.argmax()
-    x_ticks = np.linspace(0, times[-1] + 1, 10)
-    x_ticks = np.round(x_ticks / 10) * 10
-    for ax_row in axs:
-        for ax in ax_row:
-            ax.grid(True, linestyle='--', alpha=0.7)
-            ax.set_xticks(x_ticks)  # ticks every time_intervals
+    # maxtime = times.argmax()
+    # x_ticks = np.linspace(0, times[-1] + 1, 10)
+    # x_ticks = np.round(x_ticks / 10) * 10
+    # for ax_row in axs:
+    #     for ax in ax_row:
+    #         ax.grid(True, linestyle='--', alpha=0.7)
+    #         ax.set_xticks(x_ticks)  # ticks every time_intervals
     
     #axs[-1, 0].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
     #axs[-1, 1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
