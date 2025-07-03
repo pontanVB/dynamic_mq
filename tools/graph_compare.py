@@ -45,6 +45,26 @@ def process_files(outputs_folder, plot_name):
             
             data[queue_name][graph_file] = time_ns / 1e6
 
+
+    # -- Cutting outliers --
+    # 1. After collecting data into `data`, flatten it into a list of times
+    all_times = [t for q in data.values() for t in q.values()]
+    if not all_times:
+        return
+
+    median = np.median(all_times)
+    CAP = median * 10
+
+    # 2. Delete times > CAP 
+    for queue in list(data):                    
+        for graph in list(data[queue]):         
+            if data[queue][graph] > CAP:
+                print(f"Removing queue {queue} on {data[queue]} due to being 10x the median")
+                del data[queue][graph]          
+        if not data[queue]:                     
+            del data[queue]
+    # -- --
+
     # Sorted graph and queue names
     all_graphs = sorted({g for q in data.values() for g in q})
     all_queues = sorted(data.keys())
