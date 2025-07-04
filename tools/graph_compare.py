@@ -32,8 +32,9 @@ def process_files(outputs_folder, plot_name):
                 print(queue_name)
                 stick_params = pq_settings.get("stickiness_parameters", {})
                 stick_factor_value = stick_params.get("stick_factor", 0)
-                # if stick_factor_value > 1:
-                #     queue_name += "Dynamic"
+                punishment_value = np.abs(stick_params.get("punishment", 0))
+                if stick_factor_value > 1:
+                    queue_name = f'MQ_dynamic_{punishment_value}' 
 
             if queue_name == "k-LSM":
                 k_val = str(pq_settings.get("k"))
@@ -59,7 +60,7 @@ def process_files(outputs_folder, plot_name):
     for queue in list(data):                    
         for graph in list(data[queue]):         
             if data[queue][graph] > CAP:
-                print(f"Removing queue {queue} on {data[queue]} due to being 10x the median")
+                print(f"Removing queue {queue} on {data[queue]} due to being 10x the")
                 del data[queue][graph]          
         if not data[queue]:                     
             del data[queue]
