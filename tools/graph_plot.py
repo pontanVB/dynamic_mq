@@ -135,7 +135,7 @@ def process_files(log_file, plot_name):
     granularity = np.round(duration_ns / 100)  # 1 % of run, ≥ 1 ms    # granularity = 1
     disp_gran = np.round(granularity / 1e6, 1) 
 
-    print(f"{disp_gran} ns granularity")
+    print(f"{disp_gran} ms granularity")
     
 
     # Sampling and time indexing
@@ -270,8 +270,8 @@ def process_files(log_file, plot_name):
     #axs[-1, 1].set_xticks(np.arange(0, times[-1] + 1, time_interval))  # ticks every time_intervals
 
 
-    axs[-1, 0].set_xlabel(f"Time (ms) ({disp_gran}ns granularity)")
-    axs[-1, 1].set_xlabel(f"Time (ms) ({disp_gran}ns granularity)")
+    axs[-1, 0].set_xlabel(f"Time (ms) ({disp_gran}ms granularity)")
+    axs[-1, 1].set_xlabel(f"Time (ms) ({disp_gran}ms granularity)")
     plt.tight_layout()
 
 
