@@ -29,7 +29,8 @@ class StickRandomDynamic {
         int lower_threshold{-50};
         int upper_threshold{50};
         double stick_factor{1};
-        double stickiness_cap{100000};
+        double stickiness_cap{1000000};
+        bool change_sampling{false};
     };
 
 
@@ -53,6 +54,7 @@ class StickRandomDynamic {
     double dynamic_stickiness{};
     double stick_factor_{};
     double initial_stick_factor_{};
+    bool change_sampling_{};
     
 
     void refresh_pop_index(std::size_t num_pqs) noexcept {
@@ -67,10 +69,60 @@ class StickRandomDynamic {
     explicit StickRandomDynamic(Config const& config, SharedData& shared_data) noexcept {
         initial_stick_factor_ = config.stick_factor;
         stick_factor_ = initial_stick_factor_;
+        change_sampling_ = config.change_sampling;
         auto id = shared_data.id_count.fetch_add(1, std::memory_order_relaxed);
         auto seq = std::seed_seq{config.seed, id};
         rng_.seed(seq);
     }
+
+    /*
+    Decreases the contention by increasing stickness or decreasing the sampled subqueues.
+
+    If the sampled queues is above 2 the queues will be decreased before the stickness. 
+    TODO - Change the order of these!
+    
+    */
+#ifdef TEST
+    void contention_decrease(){
+        if (num_pop_candidates > 2 && change_queues_){
+            --num_pop_candidates;
+        }
+        else if (num_pop_candidates < 2){
+            std::cerr << "ERROR IN contention_decrease, too few sampled subqueues";
+        }
+        else {
+            dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
+        }
+
+    }
+
+    /*
+    Increases the contention by decreasing stickness or increasing the sampled subqueues.
+
+    If the stickiness is already at it's lowest value, 1, increase the sampled queues.
+    TODO - Change the order of these!
+    
+    */
+
+    void contention_increase(){
+        if (dynamic_stickiness > 1) {
+            dynamic_stickiness = std::floor(dynamic_stickiness / stick_factor_);
+
+        }
+        // Change sampled subqueues if stickiness is at 1
+        else if (dynamic_stickiness == 1 && change_queues_) {
+                ++num_pop_candidates;
+            
+        }
+        else {
+            std::cerr << "ERROR IN contention_decrease, too few sampled subqueues";
+
+        }
+
+
+    }
+#endif TEST
+
 
     template <typename Context>
     std::optional<typename Context::value_type> try_pop(Context& ctx) {
@@ -124,7 +176,7 @@ class StickRandomDynamic {
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
                     if (dynamic_stickiness < ctx.config().stickiness_cap){
-                    dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
+                        dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
                     }
                     lock_balance = 0;
                 }
