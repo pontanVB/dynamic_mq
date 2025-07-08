@@ -6,5 +6,6 @@
 .vscode
 metrics.txt
 /plots/
+/graphs/
 /output/
 thread_intervals.txt
