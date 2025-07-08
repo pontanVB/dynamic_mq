@@ -121,7 +121,7 @@ class StickRandomDynamic {
 
 
     }
-#endif TEST
+#endif
 
 
     template <typename Context>

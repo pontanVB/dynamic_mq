@@ -37,6 +37,7 @@ struct Settings {
 
     #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
     std::filesystem::path log_file_metrics = "metrics_log.txt";
+    int log_frequency = 50;
     #endif
 };
 
@@ -51,6 +52,7 @@ void register_cmd_options(cxxopts::Options& cmd) {
     // optional logging for dynamic relaxation
     #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
         ("m,log-file-metrics", "File to write the metric log to", cxxopts::value<std::filesystem::path>(settings.log_file_metrics), "PATH")
+        ("log-frequency", "Time in nanoseconds between logging of operations", cxxopts::value<int>(settings.log_frequency), "NUMBER")
     #endif
         ;
     settings.pq_settings.register_cmd_options(cmd);
@@ -124,9 +126,8 @@ struct ThreadData {
     std::vector<DynamicLog> metrics;
 };
 
-std::optional<node_type> try_pop_with_logging(handle_type& handle, int id, ThreadData& thread_data, Counter& counter) {
+void logging(handle_type& handle, int id, ThreadData& thread_data, Counter& counter) {
     auto tick = std::chrono::high_resolution_clock::now();
-    auto retval = handle.try_pop();
 
     thread_data.metrics.push_back({
         tick,
@@ -139,8 +140,6 @@ std::optional<node_type> try_pop_with_logging(handle_type& handle, int id, Threa
     handle.reset_lock_fails();
     counter.pushed_nodes_record = 0;
     counter.popped_nodes_record = 0;
-
-    return retval;
 }
 
 void write_log_metrics(std::vector<ThreadData> const& thread_data, std::ostream& out) {
@@ -204,36 +203,78 @@ void process_node(node_type const& node, handle_type& handle, Counter& counter, 
 
 // CHECK THIS PART
 #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
+// [[gnu::noinline]] Counter benchmark_thread(thread_coordination::Context& thread_context, pq_type& pq,
+//                                            SharedData& data) {
+//     Counter counter;
+//     auto handle = pq.get_handle();
+
+//     auto& thread_data = data.thread_data[thread_context.id()];
+
+//     if (thread_context.id() == 0) {
+//         data.distances[0].value = 0;
+//         handle.push({0, 0});
+//         ++counter.pushed_nodes;
+//         ++counter.pushed_nodes_record;
+//     }
+//     thread_context.synchronize();
+//     std::optional<node_type> node;
+//     while (data.termination_detection.repeat([&]() {
+//         if(counter.pushed_nodes_record + counter.popped_nodes_record >= 200) {
+//             node = try_pop_with_logging(handle, thread_context.id(), thread_data, counter);
+//             ++counter.popped_nodes_record;
+//         }
+//         else{
+//             node = handle.try_pop();
+//             ++counter.popped_nodes_record;
+//         }
+
+//         return node.has_value();
+//     })) {
+//         process_node(*node, handle, counter, data);
+//     }
+//     thread_context.synchronize();
+//     return counter;
+// }
+
 [[gnu::noinline]] Counter benchmark_thread(thread_coordination::Context& thread_context, pq_type& pq,
                                            SharedData& data) {
     Counter counter;
     auto handle = pq.get_handle();
-
     auto& thread_data = data.thread_data[thread_context.id()];
+    auto last_log = std::chrono::high_resolution_clock::now();
 
     if (thread_context.id() == 0) {
         data.distances[0].value = 0;
         handle.push({0, 0});
         ++counter.pushed_nodes;
-        ++counter.pushed_nodes_record;
     }
     thread_context.synchronize();
-    std::optional<node_type> node;
-    while (data.termination_detection.repeat([&]() {
-        if(counter.pushed_nodes_record + counter.popped_nodes_record >= 200) {
-            node = try_pop_with_logging(handle, thread_context.id(), thread_data, counter);
-            ++counter.popped_nodes_record;
-        }
-        else{
+    while (true) {
+        std::optional<node_type> node;
+        while (data.termination_detection.repeat([&]() {
             node = handle.try_pop();
             ++counter.popped_nodes_record;
+            if (std::chrono::high_resolution_clock::now() - last_log >= std::chrono::nanoseconds(settings.log_frequency)) {
+                last_log = std::chrono::high_resolution_clock::now();
+                logging(handle, thread_context.id(), thread_data, counter);
+            }
+            return node.has_value();
+        })) {
+            process_node(*node, handle, counter, data);
         }
-
-        return node.has_value();
-    })) {
-        process_node(*node, handle, counter, data);
+        data.missing_nodes.fetch_add(counter.pushed_nodes - counter.processed_nodes - counter.ignored_nodes,
+                                     std::memory_order_relaxed);
+        thread_context.synchronize();
+        if (data.missing_nodes.load(std::memory_order_relaxed) == 0) {
+            break;
+        }
+        thread_context.synchronize();
+        if (thread_context.id() == 0) {
+            data.missing_nodes.store(0, std::memory_order_relaxed);
+            data.termination_detection.reset(settings.num_threads);     // DOESN'T MATCH COMMIT FROM MARVIN, BUT REQUIRES NUM_THREADS.
+        }
+        thread_context.synchronize();
     }
-    thread_context.synchronize();
     return counter;
 }
 
