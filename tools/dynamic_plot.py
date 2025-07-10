@@ -317,6 +317,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     axs[pos_throughput].plot(times, throughput, '-', linewidth=2, color='darkblue', label='temp')
     axs[pos_throughput].set_title('System Throughput')
     axs[pos_throughput].set_ylabel('Elements / s')
+    throughput_ymin, throughput_ymax = axs[pos_throughput].get_ylim()
 
 
     for thread_id, group in contention_df.groupby('thread_id'):
@@ -327,6 +328,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
         thread_rel_times = (full_time - start_time).total_seconds() * 1000
         axs[pos_throughput_per_thread].plot(thread_rel_times, throughput_full_filled, '-', label=f'Thread {int(thread_id)}', alpha=0.7)
         
+    axs[pos_throughput_per_thread].set_ylim(throughput_ymin, throughput_ymax)
     axs[pos_throughput_per_thread].set_title('Throughput per Thread')
     # axs[3,1].legend()
 
