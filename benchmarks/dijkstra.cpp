@@ -37,7 +37,7 @@ struct Settings {
 
     #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) && defined(LOG_OPERATIONS)
     std::filesystem::path log_file_metrics = "metrics_log.txt";
-    int log_frequency = 50;
+    int log_frequency = 10000;
     #endif
 };
 
