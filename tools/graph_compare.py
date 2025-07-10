@@ -7,8 +7,9 @@ from datetime import datetime
 
 
 
-def process_files(outputs_folder, plot_name):
+def process_files(outputs_folder, plot_name, config_text):
     data = {}  # {queue: {graph_file: time_ns}}
+
 
     for filename in os.listdir(outputs_folder):
         if filename.endswith(".json"):
@@ -86,7 +87,7 @@ def process_files(outputs_folder, plot_name):
     plt.xticks(x + bar_width * (n_queues - 1) / 2, all_graphs, rotation=45, ha='right')
     plt.xlabel("Graph")
     plt.ylabel("Time (ms)")
-    plt.title("Execution Time per Graph (per Queue)")
+    plt.title(f"Execution Time per Graph (per Queue){config_text}")
 
     # Sort Legend by ascii code (alphabetically)
     handles, labels = plt.gca().get_legend_handles_labels()
@@ -124,12 +125,13 @@ def main():
     parser = argparse.ArgumentParser(description="Process metrics and rank error files.")
     parser.add_argument('-o', type=str, required=False, help="Path to output folder.", default='outputs')
     parser.add_argument('-p', type=str, required=False, help="Plot name.", default='graph_comparison')
+    parser.add_argument('-c', type=str, required=False, help="Dynamic config.", default='')
 
     
     args = parser.parse_args()
     
     # Call processing function with arguments
-    process_files(args.o, args.p)
+    process_files(args.o, args.p, args.c)
 
 if __name__ == "__main__":
     main()
