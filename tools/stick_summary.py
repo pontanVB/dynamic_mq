@@ -29,10 +29,16 @@ def process_files(outputs_folder, table_name):
 
         df = pd.concat([df_ml, df_re], ignore_index=True)
 
-        stickiness_avg = df["stickiness"].mean()
-        iterations_total = len(df)
-        lock_fails_total = df["lock_fails"].sum()
+        # Calculate contention only for data after first 10ms (10_000_000 ns)
+        df_after_10ms = df[df["tick"] - df["tick"].min() >= 10_000_000]
+
+        lock_fails_total = df_after_10ms["lock_fails"].sum()
+        iterations_total = len(df_after_10ms)
         contention = iterations_total * 2 / (iterations_total * 2 + lock_fails_total)
+
+        stickiness_avg = df["stickiness"].mean()
+        # Overwrite with all iterations
+        iterations_total = len(df)
         rank_error_total = df["rank_error"].sum()
         delay_toal = df["delay"].sum()
 
