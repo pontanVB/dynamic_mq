@@ -316,7 +316,7 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
     # Throughput
     axs[pos_throughput].plot(times, throughput, '-', linewidth=2, color='darkblue', label='temp')
     axs[pos_throughput].set_title('System Throughput')
-    axs[pos_throughput].set_ylabel('Elements / s')
+    axs[pos_throughput].set_ylabel('Iterations / s')
     throughput_ymin, throughput_ymax = axs[pos_throughput].get_ylim()
 
 
