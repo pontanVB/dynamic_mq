@@ -45,7 +45,7 @@ def process_files(outputs_folder, table_name):
         summary_rows.append({
             "stickiness": f"{k}",
             "iterations": int(iterations_total),
-            "contention": round(contention, 3),
+            "contention": round(contention, 6),
             "rank_error" : rank_error_total,
             "delay" : delay_toal
         })
