@@ -7,7 +7,7 @@ from datetime import datetime
 
 
 
-def process_files(outputs_folder, plot_name, config_text):
+def process_files(outputs_folder, plot_name, config_text, show_settings):
     data = {}  # {queue: {graph_file: time_ns}}
 
 
@@ -34,8 +34,15 @@ def process_files(outputs_folder, plot_name, config_text):
                 stick_params = pq_settings.get("stickiness_parameters", {})
                 stick_factor_value = stick_params.get("stick_factor", 0)
                 punishment_value = np.abs(stick_params.get("punishment", 0))
-                if stick_factor_value > 1:
-                    queue_name = f'MQ_dynamic_{punishment_value}' 
+                threshold = stick_params.get("upper_threshold", 0)
+                if queue_name == 'MQ_stick_random_dynamic' and show_settings:
+                    queue_name = f'p:{punishment_value}_t:{threshold}_f:{stick_factor_value}' 
+                elif queue_name == 'MQ_stick_random_dynamic':
+                    queue_name = 'MQ_Dynamic'
+                elif queue_name == 'MQ_stick_swap':
+                    queue_name = 'MQ_Quality'
+                elif queue_name == 'MQ_stick-random':
+                    queue_name = 'MQ_Fast'
 
             if queue_name == "k-LSM":
                 k_val = str(pq_settings.get("k"))
@@ -126,12 +133,13 @@ def main():
     parser.add_argument('-o', type=str, required=False, help="Path to output folder.", default='outputs')
     parser.add_argument('-p', type=str, required=False, help="Plot name.", default='graph_comparison')
     parser.add_argument('-c', type=str, required=False, help="Dynamic config.", default='')
+    parser.add_argument('-s', action='store_true', required=False, help="Diffentiate settings settings.", default=False)
 
     
     args = parser.parse_args()
     
     # Call processing function with arguments
-    process_files(args.o, args.p, args.c)
+    process_files(args.o, args.p, args.c, args.s)
 
 if __name__ == "__main__":
     main()
