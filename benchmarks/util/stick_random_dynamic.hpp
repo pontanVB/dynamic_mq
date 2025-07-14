@@ -29,7 +29,7 @@ class StickRandomDynamic {
         int lower_threshold{-50};
         int upper_threshold{50};
         double stick_factor{1};
-        double stickiness_cap{1000000};
+        double stickiness_cap{8096};
         bool change_sampling{false};
     };
 
