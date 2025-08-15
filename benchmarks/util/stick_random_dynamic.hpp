@@ -75,53 +75,27 @@ class StickRandomDynamic {
         rng_.seed(seq);
     }
 
-    /*
-    Decreases the contention by increasing stickness or decreasing the sampled subqueues.
-
-    If the sampled queues is above 2 the queues will be decreased before the stickness. 
-    TODO - Change the order of these!
-    
-    */
-#ifdef TEST
-    void contention_decrease(){
-        if (num_pop_candidates > 2 && change_queues_){
+    // Tries to decrease number of sampled queues (if enabled) or increase stickiness
+    void hit_lower_threshold(){
+        if (change_sampling_ && num_pop_candidates > 2) {
             --num_pop_candidates;
-        }
-        else if (num_pop_candidates < 2){
-            std::cerr << "ERROR IN contention_decrease, too few sampled subqueues";
-        }
-        else {
+        } 
+        else if (dynamic_stickiness < ctx.config().stickiness_cap){
             dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
         }
-
+        lock_balance = 0;
     }
 
-    /*
-    Increases the contention by decreasing stickness or increasing the sampled subqueues.
-
-    If the stickiness is already at it's lowest value, 1, increase the sampled queues.
-    TODO - Change the order of these!
-    
-    */
-
-    void contention_increase(){
-        if (dynamic_stickiness > 1) {
-            dynamic_stickiness = std::floor(dynamic_stickiness / stick_factor_);
-
-        }
-        // Change sampled subqueues if stickiness is at 1
-        else if (dynamic_stickiness == 1 && change_queues_) {
-                ++num_pop_candidates;
-            
+    // Tries to increase number of sampled queues (if enabled) or lower stickiness.
+    void hit_upper_threshold(){
+        if (stickiness == 1 && change_sampling_) {
+            ++num_pop_candidates;
         }
         else {
-            std::cerr << "ERROR IN contention_decrease, too few sampled subqueues";
-
+            dynamic_stickiness = std::floor(dynamic_stickiness / stick_factor_);
         }
-
-
+        lock_balance = 0;
     }
-#endif
 
 
     template <typename Context>
@@ -160,25 +134,25 @@ class StickRandomDynamic {
                 guard.popped();
                 guard.unlock();
                 --count_;
-                //RESET LOCK FAILS????
                 lock_balance += ctx.config().reward;
-
                 if (lock_balance >= ctx.config().upper_threshold) {
-                    if (dynamic_stickiness > 1) {
-                        dynamic_stickiness = std::floor(dynamic_stickiness / stick_factor_);
-                    }
-                    lock_balance = 0;
+                    hit_upper_threshold();
+                    // if (dynamic_stickiness > 1) {
+                    //     dynamic_stickiness = std::floor(dynamic_stickiness / stick_factor_);
+                    // }
+                    // lock_balance = 0;
                 }
                 return v;
             }
-            else { //lock fail
+            else {
                 ++lock_fail_count_;
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
-                    if (dynamic_stickiness < ctx.config().stickiness_cap){
-                        dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
-                    }
-                    lock_balance = 0;
+                    hit_lower_threshold();
+                    // if (dynamic_stickiness < ctx.config().stickiness_cap){
+                    //     dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
+                    // }
+                    // lock_balance = 0;
                 }
             }
             refresh_pop_index(ctx.num_pqs());
@@ -192,7 +166,6 @@ class StickRandomDynamic {
             std::cerr << "Error: Negative count_ in stick_random_dynamic";
             return;
         }
-
         if (!already_fetched) {
             dynamic_stickiness = static_cast<double>(ctx.config().stickiness);
             already_fetched = true;
@@ -209,25 +182,25 @@ class StickRandomDynamic {
                 guard.pushed();
                 guard.unlock();
                 --count_;
-                //DON'T RESET LOCK COUNT?
                 lock_balance += ctx.config().reward;
                 if (lock_balance >= ctx.config().upper_threshold) {
-                    if (dynamic_stickiness > 1) {
-                        dynamic_stickiness = std::floor(dynamic_stickiness / stick_factor_);
-                    }
-                    lock_balance = 0;
+                    hit_upper_threshold();
+                    // if (dynamic_stickiness > 1) {
+                    //     dynamic_stickiness = std::floor(dynamic_stickiness / stick_factor_);
+                    // }
+                    // lock_balance = 0;
                 }
                 return;
             }
-            else { //lock fail
+            else {
                 ++lock_fail_count_;
                 lock_balance += ctx.config().punishment;
                 if (lock_balance <= ctx.config().lower_threshold) {
-                    if (dynamic_stickiness < ctx.config().stickiness_cap){
-                        dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
-                    }
-                    
-                    lock_balance = 0;
+                    hit_lower_threshold();
+                    // if (dynamic_stickiness < ctx.config().stickiness_cap){
+                    //     dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
+                    // }
+                    // lock_balance = 0;
                 }
             }
             refresh_pop_index(ctx.num_pqs());
