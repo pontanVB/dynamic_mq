@@ -559,7 +559,7 @@ class Context : public thread_coordination::Context {
         }
 
 
-        #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+        #if defined MQ_MODE_STICK_RANDOM_DYNAMIC || defined MQ_MODE_STICK_RANDOM_DYNAMIC_CENTRAL
         thread_data_.metrics.push_back({
             tick,
             this->handle_.get_dynamic_stickiness(), 
