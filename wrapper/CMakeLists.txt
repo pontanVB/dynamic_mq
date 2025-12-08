@@ -22,6 +22,10 @@ add_library(mq_stick_random_dynamic INTERFACE)
 target_compile_definitions(mq_stick_random_dynamic INTERFACE MQ_MODE_STICK_RANDOM_DYNAMIC)
 target_link_libraries(mq_stick_random_dynamic INTERFACE mq)
 
+add_library(mq_stick_random_dynamic_central INTERFACE)
+target_compile_definitions(mq_stick_random_dynamic_central INTERFACE MQ_MODE_STICK_RANDOM_DYNAMIC_CENTRAL)
+target_link_libraries(mq_stick_random_dynamic_central INTERFACE mq)
+
 add_library(mq_stick_swap INTERFACE)
 target_compile_definitions(mq_stick_swap INTERFACE MQ_MODE_STICK_SWAP)
 target_link_libraries(mq_stick_swap INTERFACE mq)
@@ -36,7 +40,7 @@ target_compile_definitions(mq_stick_parametric
 target_link_libraries(mq_stick_parametric INTERFACE mq)
 
 list(APPEND MQ_VARIANTS mq_random mq_random_strict mq_stick_random mq_stick_random_dynamic
-     mq_stick_swap mq_stick_mark)
+     mq_stick_random_dynamic_central mq_stick_swap mq_stick_mark)
 
 if(EXP_TUNING_TARGETS)
   foreach(i ${EXP_TUNING_POP_PQS})

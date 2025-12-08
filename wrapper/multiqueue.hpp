@@ -17,6 +17,8 @@
 #include "multiqueue/modes/stick_random.hpp"
 #elif defined MQ_MODE_STICK_RANDOM_DYNAMIC
 #include "benchmarks/util/stick_random_dynamic.hpp"
+#elif defined MQ_MODE_STICK_RANDOM_DYNAMIC_CENTRAL
+#include "benchmarks/util/stick_random_dynamic_central.hpp"
 #elif defined MQ_MODE_STICK_SWAP
 #include "multiqueue/modes/stick_swap.hpp"
 #elif defined MQ_MODE_STICK_MARK
@@ -74,6 +76,10 @@ static constexpr bool has_stickiness = true;
 #elif defined MQ_MODE_STICK_RANDOM_DYNAMIC
 using mode_type = ::multiqueue::mode::StickRandomDynamic<num_pop_candidates>;
 static constexpr auto mode_name = "stick_random_dynamic";
+static constexpr bool has_stickiness = true;
+#elif defined MQ_MODE_STICK_RANDOM_DYNAMIC_CENTRAL
+using mode_type = ::multiqueue::mode::StickRandomDynamicCentral<num_pop_candidates>;
+static constexpr auto mode_name = "stick_random_dynamic_central";
 static constexpr bool has_stickiness = true;
 #elif defined MQ_MODE_STICK_SWAP
 using mode_type = ::multiqueue::mode::StickSwap<num_pop_candidates>;
@@ -185,7 +191,7 @@ class MultiQueue {
             if constexpr (has_stickiness) {
                 cmd.add_options()("k,stickiness", "Stickiness period", cxxopts::value<int>(config.stickiness),
                                   "NUMBER");
-                #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+                #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) || defined(MQ_MODE_STICK_RANDOM_DYNAMIC_CENTRAL)
                 cmd.add_options()("x,punishment", "Punishment for failing a lock", 
                                   cxxopts::value<int>(config.punishment), "NUMBER");
                 cmd.add_options()("y,reward", "Reward for claiming a lock", 
@@ -211,7 +217,7 @@ class MultiQueue {
                     std::cerr << "Error: Stickiness must be at least 1\n";
                     return false;
                 }
-                #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+                #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) || defined(MQ_MODE_STICK_RANDOM_DYNAMIC_CENTRAL)
                 if (config.punishment > 0) {
                     std::cerr << "Error: Punishment must be at most 0\n";
                     return false;
@@ -242,7 +248,7 @@ class MultiQueue {
             out << "MQ seed: " << config.seed << '\n';
             if constexpr (has_stickiness) {
                 out << "Stickiness: " << config.stickiness << '\n';
-                #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+                #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) || defined(MQ_MODE_STICK_RANDOM_DYNAMIC_CENTRAL)
                 out << "Stickiness parameters: " 
                     << config.punishment << "," << config.reward << "," 
                     << config.lower_threshold << "," << config.upper_threshold << '\n'
@@ -260,7 +266,7 @@ class MultiQueue {
             if constexpr (has_stickiness) {
                 out << ',';
                 out << std::quoted("stickiness") << ':' << config.stickiness;
-                #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+                #if defined(MQ_MODE_STICK_RANDOM_DYNAMIC) || defined(MQ_MODE_STICK_RANDOM_DYNAMIC_CENTRAL)
                 out << ',';
                 out << std::quoted("stickiness_parameters") << ':';
                 out << '{';
