@@ -970,7 +970,7 @@ void run_benchmark(Settings const& settings) {
     write_log(shared_data.thread_data, log_out);
     log_out.close();
     
-    #ifdef MQ_MODE_STICK_RANDOM_DYNAMIC
+    #if defined MQ_MODE_STICK_RANDOM_DYNAMIC || defined MQ_MODE_STICK_RANDOM_DYNAMIC_CENTRAL
         std::clog << "Writing metric logs...\n";
         std::ofstream metric_log_out(settings.log_file_metrics);  // assumed to be valid
         write_log_metrics(shared_data.thread_data, metric_log_out);
