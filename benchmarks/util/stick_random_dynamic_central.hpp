@@ -40,7 +40,7 @@ class StickRandomDynamicCentral {
         std::atomic_int id_count{0};
         std::atomic_uint32_t lock_ = 0;
 
-        double global_stickiness{1};
+        double global_stickiness{1024};
         int global_lock_balance{0};
 
         explicit SharedData(std::size_t /*num_pqs*/) noexcept {
@@ -99,7 +99,7 @@ class StickRandomDynamicCentral {
         }
         if (iterations >= ctx.config().CHECK_GLOBAL) {
             lock(ctx);
-            ctx.shared_data().global_lock_balance += lock_balance;
+            ctx.shared_data().global_lock_balance = ctx.shared_data().global_lock_balance*0.99 + lock_balance*0.01;
             if (ctx.shared_data().global_lock_balance >= ctx.config().upper_threshold) {
                 ctx.shared_data().global_stickiness = std::min(std::ceil(ctx.shared_data().global_stickiness * stick_factor_), ctx.config().stickiness_cap);
                 ctx.shared_data().global_lock_balance = 0;
