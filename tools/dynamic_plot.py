@@ -327,8 +327,9 @@ def process_files(log_file, rank_file, plot_name, time_sample=1, time_interval=5
 
         thread_rel_times = (full_time - start_time).total_seconds() * 1000
         axs[pos_throughput_per_thread].plot(thread_rel_times, throughput_full_filled, '-', label=f'Thread {int(thread_id)}', alpha=0.7)
+        throughput_per_thread_ymin, throughput_per_thread_ymax = axs[pos_throughput_per_thread].get_ylim()
         
-    axs[pos_throughput_per_thread].set_ylim(throughput_ymin, throughput_ymax)
+    axs[pos_throughput_per_thread].set_ylim(throughput_per_thread_ymin, throughput_per_thread_ymax)
     axs[pos_throughput_per_thread].set_title('Throughput per Thread')
     # axs[3,1].legend()
 
