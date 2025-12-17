@@ -101,11 +101,11 @@ class StickRandomDynamicCentral {
             lock(ctx);
             ctx.shared_data().global_lock_balance = 0.99*ctx.shared_data().global_lock_balance + 0.01*lock_balance;
             if (ctx.shared_data().global_lock_balance >= ctx.config().upper_threshold) {
-                ctx.shared_data().global_stickiness = std::min(std::ceil(ctx.shared_data().global_stickiness * stick_factor_), ctx.config().stick_cap);
-                ctx.shared_data().global_lock_balance = 0;
+                ctx.shared_data().global_stickiness = std::max(std::floor(ctx.shared_data().global_stickiness / stick_factor_), 1.0);
+                ctx.shared_data().global_lock_balance = 0; 
             }
             else if (ctx.shared_data().global_lock_balance <= ctx.config().lower_threshold) {
-                ctx.shared_data().global_stickiness = std::max(std::floor(ctx.shared_data().global_stickiness / stick_factor_), 1.0);
+                ctx.shared_data().global_stickiness = std::min(std::ceil(ctx.shared_data().global_stickiness * stick_factor_), ctx.config().stick_cap);
                 ctx.shared_data().global_lock_balance = 0;
             }
             dynamic_stickiness = ctx.shared_data().global_stickiness;
