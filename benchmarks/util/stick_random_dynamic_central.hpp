@@ -40,7 +40,7 @@ class StickRandomDynamicCentral {
         std::atomic_int id_count{0};
         std::atomic_uint32_t lock_ = 0;
 
-        double global_stickiness{1024};
+        double global_stickiness{1};
         int global_lock_balance{0};
 
         explicit SharedData(std::size_t /*num_pqs*/) noexcept {
