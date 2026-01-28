@@ -66,12 +66,12 @@ class StickRandomDynamicCentral {
 
 
     template <typename Context>
-    void try_lock(Context& ctx) noexcept {
+    bool try_lock(Context& ctx) noexcept {
         return (ctx.shared_data().lock_.load(std::memory_order_relaxed) == 0U && ctx.shared_data().lock_.exchange(1U, std::memory_order_acquire) == 0U);
     }
 
     template <typename Context>
-    void lock(Context& ctx) noexcept {
+    bool lock(Context& ctx) noexcept {
         while(true) {
             if (ctx.shared_data().lock_.load(std::memory_order_relaxed) == 0U && ctx.shared_data().lock_.exchange(1U, std::memory_order_acquire) == 0U){
                 return;
