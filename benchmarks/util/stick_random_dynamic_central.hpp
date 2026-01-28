@@ -41,7 +41,7 @@ class StickRandomDynamicCentral {
         std::atomic_uint32_t lock_ = 0;
 
         double global_stickiness{1};
-        int global_lock_balance{0};
+        double global_lock_balance{0};
 
         explicit SharedData(std::size_t /*num_pqs*/) noexcept {
         }
@@ -62,7 +62,13 @@ class StickRandomDynamicCentral {
     bool change_sampling_{};
 
     int iterations = 0;
+    int lock_update_fails = 0;
 
+
+    template <typename Context>
+    void try_lock(Context& ctx) noexcept {
+        return (ctx.shared_data().lock_.load(std::memory_order_relaxed) == 0U && ctx.shared_data().lock_.exchange(1U, std::memory_order_acquire) == 0U);
+    }
 
     template <typename Context>
     void lock(Context& ctx) noexcept {
@@ -87,6 +93,8 @@ class StickRandomDynamicCentral {
         }
     }
 
+    
+
     // Update lock balances.
     template <typename Context>
     void update_lock_balance(Context& ctx, bool success) {
@@ -98,19 +106,25 @@ class StickRandomDynamicCentral {
             lock_balance += ctx.config().punishment;
         }
         if (iterations >= ctx.config().CHECK_GLOBAL) {
-            lock(ctx);
-            ctx.shared_data().global_lock_balance = 0.99*ctx.shared_data().global_lock_balance + 0.01*lock_balance;
-            if (ctx.shared_data().global_lock_balance >= ctx.config().upper_threshold) {
-                ctx.shared_data().global_stickiness = std::max(std::floor(ctx.shared_data().global_stickiness / stick_factor_), 1.0);
-                ctx.shared_data().global_lock_balance = 0; 
+            if (try_lock(ctx)) {
+                ctx.shared_data().global_lock_balance = 0.99*ctx.shared_data().global_lock_balance + 0.01*lock_balance;
+                if (ctx.shared_data().global_lock_balance >= ctx.config().upper_threshold) {
+                    ctx.shared_data().global_stickiness = std::max(std::floor(ctx.shared_data().global_stickiness / stick_factor_), 1.0);
+                    ctx.shared_data().global_lock_balance = 0; 
+                }
+                else if (ctx.shared_data().global_lock_balance <= ctx.config().lower_threshold) {
+                    ctx.shared_data().global_stickiness = std::min(std::ceil(ctx.shared_data().global_stickiness * stick_factor_), ctx.config().stick_cap);
+                    ctx.shared_data().global_lock_balance = 0;
+                }
+                dynamic_stickiness = ctx.shared_data().global_stickiness;
+                unlock(ctx);
+                lock_balance = 0;
+            } else {
+                lock_update_fails++;
+                if (lock_update_fails >= 3) {
+                    lock_balance = 0;
+                }
             }
-            else if (ctx.shared_data().global_lock_balance <= ctx.config().lower_threshold) {
-                ctx.shared_data().global_stickiness = std::min(std::ceil(ctx.shared_data().global_stickiness * stick_factor_), ctx.config().stick_cap);
-                ctx.shared_data().global_lock_balance = 0;
-            }
-            dynamic_stickiness = ctx.shared_data().global_stickiness;
-            unlock(ctx);
-            lock_balance = 0;
             iterations = 0;
         }
     }
