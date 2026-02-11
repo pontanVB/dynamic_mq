@@ -54,6 +54,7 @@ class StickRandomDynamic {
     double dynamic_stickiness{};
     double stick_factor_{};
     double initial_stick_factor_{};
+    double stick_cap_{};
     bool change_sampling_{};
     
 
@@ -70,6 +71,7 @@ class StickRandomDynamic {
         initial_stick_factor_ = config.stick_factor;
         stick_factor_ = initial_stick_factor_;
         change_sampling_ = config.change_sampling;
+        stick_cap_ = config.stickiness_cap;
         auto id = shared_data.id_count.fetch_add(1, std::memory_order_relaxed);
         auto seq = std::seed_seq{config.seed, id};
         rng_.seed(seq);
@@ -77,23 +79,19 @@ class StickRandomDynamic {
 
     // Tries to decrease number of sampled queues (if enabled) or increase stickiness
     void hit_lower_threshold(){
-        if (change_sampling_ && num_pop_candidates > 2) {
-            --num_pop_candidates;
-        } 
-        else if (dynamic_stickiness < ctx.config().stickiness_cap){
-            dynamic_stickiness = std::ceil(dynamic_stickiness * stick_factor_);
-        }
+        //if (change_sampling_ && num_pop_candidates > 2) {
+        //    --num_pop_candidates;
+        //}
+        dynamic_stickiness = std::max(std::ceil(dynamic_stickiness * stick_factor_), stick_cap_);
         lock_balance = 0;
     }
 
     // Tries to increase number of sampled queues (if enabled) or lower stickiness.
     void hit_upper_threshold(){
-        if (dynamic_stickiness == 1 && change_sampling_) {
-            ++num_pop_candidates;
-        }
-        else {
-            dynamic_stickiness = std::floor(dynamic_stickiness / stick_factor_);
-        }
+        //if (dynamic_stickiness == 1 && change_sampling_) {
+        //    ++num_pop_candidates;
+        //}
+        dynamic_stickiness = std::min(std::floor(dynamic_stickiness / stick_factor_), 1.0);
         lock_balance = 0;
     }
 
