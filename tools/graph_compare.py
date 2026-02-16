@@ -35,8 +35,8 @@ def process_files(outputs_folder, plot_name, config_text, show_settings):
                 stick_factor_value = stick_params.get("stick_factor", 0)
                 punishment_value = np.abs(stick_params.get("punishment", 0))
                 threshold = stick_params.get("upper_threshold", 0)
-                if queue_name == ('MQ_stick_random_dynamic' or 'MQ_stick_random_dynamic_central') and show_settings:
-                    queue_name = f'p:{punishment_value}_t:{threshold}_f:{stick_factor_value}' 
+                if queue_name in ('MQ_stick_random_dynamic', 'MQ_stick_random_dynamic_central') and show_settings:
+                    queue_name = f'p:{punishment_value}_t:{threshold}_f:{stick_factor_value}'
                 elif queue_name == 'MQ_stick_random_dynamic':
                     queue_name = 'MQ_Dynamic'
                 elif queue_name == 'MQ_stick_random_dynamic_central':
